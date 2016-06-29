@@ -7,7 +7,11 @@ import org.atnos.origami._
 
 object Yielded {
 
-  type Consumer[R, E] = E => Eff[R, Unit]
+  sealed trait On[+A]
+  case class One[A](a: A) extends On[A]
+  case object Done extends On[Nothing]
+
+  type Consumer[R, E] = On[E] => Eff[R, Unit]
   type Producer[E] = Generator[E, Unit]
 
   trait Generator[E, A] {
@@ -32,7 +36,12 @@ object Yielded {
 
   def yielded[E](e: E): Generator[E, Unit] = new Generator[E, Unit] {
     def run[R](consumer: Consumer[R, E]): Eff[R, Unit] =
-      consumer(e)
+      consumer(One(e))
+  }
+
+  def done[E]: Generator[E, Unit] = new Generator[E, Unit] {
+    def run[R](consumer: Consumer[R, E]): Eff[R, Unit] =
+      consumer(Done)
   }
 
   def foldG[R <: Effects, S, E](producer: Producer[E])(fold: (S, E) => Eff[R, S])(initial: S): Eff[R, S] =
@@ -41,30 +50,61 @@ object Yielded {
   def foldEff[R <: Effects, E, A](producer: Producer[E])(fold: FoldEff[R, E, A]): Eff[R, A] = {
     type RS = State[fold.S, ?] |: R
 
-    def consumer:  E => Eff[RS, Unit] = (e: E) =>
-      get[RS, fold.S] >>= (s => put[RS, fold.S](fold.fold(s, e)))
+    def consumer: On[E] => Eff[RS, Unit] = {
+      case One(e1) =>
+        get[RS, fold.S] >>= (s => put[RS, fold.S](fold.fold(s, e1)))
+      case Done =>
+        pure(())
+    }
 
     fold.start.flatMap { initial =>
-      execState(initial)(producer.run(consumer)).flatMap(fold.end _)
+      execState(initial)(producer.run(consumer)).flatMap(fold.end)
     }
   }
 
   def emit[R, A](elements: List[A]): Producer[A] =
     elements match {
-      case Nil => Generator.GenMonad.pure(())
+      case Nil => done
       case a :: as => yielded[A](a) >> emit(as)
     }
 
   def collect[R <: Effects, A](producer: Producer[A]): Eff[R, List[A]] =
     foldEff(producer)(Folds.list)
 
-  def filter[A](producer: Producer[A])(f: A => Boolean): Producer[A] = {
+  def filter[A](producer: Producer[A])(f: A => Boolean): Producer[A] =
     new Generator[A, Unit] {
       def run[R](consumer: Consumer[R, A]): Eff[R, Unit] =
-        producer.run { a: A =>
-          if (f(a)) consumer(a)
-          else      pure(())
+        producer.run { ona: On[A] =>
+          ona match {
+            case One(a) =>
+              if (f(a)) consumer(One(a))
+              else      pure(())
+            case Done =>
+              pure(())
+          }
         }
     }
-  }
+
+  def chunk[A](size: Int)(producer: Producer[A]): Producer[List[A]] =
+    new Generator[List[A], Unit] {
+      def run[R](consumer: Consumer[R, List[A]]): Eff[R, Unit] = {
+        val elements = new collection.mutable.ListBuffer[A]
+        producer.run { ona: On[A] =>
+          ona match {
+            case One(a) =>
+              elements.append(a)
+              if (elements.size >= size) {
+                val es = elements.toList
+                elements.clear
+                consumer(One(es))
+              }
+              else pure(())
+
+            case Done =>
+              consumer(One(elements.toList)) >> consumer(Done)
+          }
+        }
+      }
+    }
+
 }
