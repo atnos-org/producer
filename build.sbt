@@ -1,29 +1,25 @@
 import com.typesafe.sbt.SbtSite.SiteKeys._
 import com.typesafe.sbt.SbtGhPages.GhPagesKeys._
 import ReleaseTransformations._
-import ScoverageSbtPlugin._
 import com.ambiata.promulgate.project.ProjectPlugin.promulgate
-import org.scalajs.sbtplugin.cross.CrossType
 import Defaults.{defaultTestTasks, testTaskOptions}
 import sbtrelease._
 
 lazy val yielded = project.in(file("."))
   .settings(moduleName := "yielded")
   .settings(buildSettings)
-  .settings(commonSettings)
   .settings(publishSettings)
   .settings(promulgate.library("org.atnos", "yielded"):_*)
+  .settings(commonSettings)
 
 lazy val buildSettings = Seq(
   organization := "org.atnos",
   scalaVersion := "2.11.8"
 )
 
-lazy val commonSettings = Seq(
+def commonSettings = Seq(
   scalacOptions ++= commonScalacOptions,
-  scalacOptions in (Compile, doc) := (scalacOptions in (Compile, doc)).value.filter(_ != "-Xfatal-warnings"),
-  addCompilerPlugin("org.spire-math" %% "kind-projector" % "0.7.1"),
-  addCompilerPlugin("com.milessabin" % "si2712fix-plugin_2.11.8" % "1.2.0")
+  scalacOptions in (Compile, doc) := (scalacOptions in (Compile, doc)).value.filter(_ != "-Xfatal-warnings")
 ) ++ warnUnusedImport ++ prompt
 
 lazy val tagName = Def.setting{
