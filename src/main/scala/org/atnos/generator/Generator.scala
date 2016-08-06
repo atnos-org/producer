@@ -1,122 +1,143 @@
 package org.atnos.generator
 
-import cats.{Monad, data}, data._
+import cats.{Eval, Foldable, Monad, data}
+import data._
 import cats.implicits._
-import org.atnos.eff._, all._, syntax.all._
+import org.atnos.eff._
+import all._
+import syntax.all._
 import org.atnos.origami._
 
-trait Generator[E, A] {
-  def run[R](consumer: Consumer[R, E]): Eff[R, A]
+trait Generator[R, E, A] {
+  def run(consumer: Consumer[R, E]): Eff[R, A]
 }
 
 object Generator { outer =>
 
-  implicit def GenMonad[E]: Monad[Generator[E, ?]] = new Monad[Generator[E, ?]] {
-    def flatMap[A, B](fa: Generator[E, A])(f: A => Generator[E, B]): Generator[E, B] =
-      new Generator[E, B] {
-        def run[R](c: Consumer[R, E]) =
+  implicit def GenMonad[R, E]: Monad[Generator[R, E, ?]] = new Monad[Generator[R, E, ?]] {
+    def flatMap[A, B](fa: Generator[R, E, A])(f: A => Generator[R, E, B]): Generator[R, E, B] =
+      new Generator[R, E, B] {
+        def run(c: Consumer[R, E]) =
           fa.run(c).flatMap(a => f(a).run(c))
       }
 
-    def pure[A](a: A): Generator[E, A] =
-      new Generator[E, A] {
-        def run[R](consumer: Consumer[R, E]) =
+    def pure[A](a: A): Generator[R, E, A] =
+      new Generator[R, E, A] {
+        def run(consumer: Consumer[R, E]) =
           Eff.pure(a)
       }
   }
 
-  implicit def ProducerMonad: Monad[Producer] = new Monad[Producer] {
-    def flatMap[A, B](fa: Producer[A])(f: A => Producer[B]): Producer[B] =
+  implicit def ProducerMonad[R]: Monad[Producer[R, ?]] = new Monad[Producer[R, ?]] {
+    def flatMap[A, B](fa: Producer[R, A])(f: A => Producer[R, B]): Producer[R, B] =
       outer.flatMap(fa)(f)
 
-    def pure[A](a: A): Producer[A] =
+    def pure[A](a: A): Producer[R, A] =
       outer.yielded(a)
   }
 
-  def yielded[E](e: E): Generator[E, Unit] = new Generator[E, Unit] {
-    def run[R](consumer: Consumer[R, E]): Eff[R, Unit] =
+  def yielded[R, E](e: E): Producer[R, E] = new Generator[R, E, Unit] {
+    def run(consumer: Consumer[R, E]): Eff[R, Unit] =
       consumer(One(e))
   }
 
-  def done[E]: Generator[E, Unit] = new Generator[E, Unit] {
-    def run[R](consumer: Consumer[R, E]): Eff[R, Unit] =
+  def done[R, E]: Producer[R, E] = new Generator[R, E, Unit] {
+    def run(consumer: Consumer[R, E]): Eff[R, Unit] =
       consumer(Done)
   }
 
-  def foldG[R <: Effects, S, E](producer: Producer[E])(fold: (S, E) => Eff[R, S])(initial: S): Eff[R, S] =
+  def foldG[R, S, E](producer: Producer[R, E])(fold: (S, E) => Eff[R, S])(initial: S): Eff[R, S] =
     foldEff(producer)(FoldEff.fromFoldLeft(initial)(fold))
 
-  def foldEff[R, E, A](producer: Producer[E])(fold: FoldEff[R, E, A]): Eff[R, A] = {
-    type RS = State[fold.S, ?] |: R
+  def foldEff[R, E, A](producer: Producer[R, E])(fold: FoldEff[R, E, A]): Eff[R, A] =
+    fold.run(producer)
 
-    def consumer: On[E] => Eff[RS, Unit] = {
-      case One(e1) =>
-        get[RS, fold.S] >>= (s => put[RS, fold.S](fold.fold(s, e1)))
-
-      case Done =>
-        pure(())
+  implicit def FoldableProducer[R]: Foldable[Producer[R, ?]] = new Foldable[Producer[R, ?]] {
+    def foldLeft[A, B](fa: Producer[R, A], b: B)(f: (B, A) => B): B = {
+      var s = b
+      fa.run {
+        case One(a) => s = f(s, a); Eff.pure(())
+        case Done   => Eff.pure(())
+      }
+      s
     }
 
-    fold.start.flatMap { initial =>
-      execState(initial)(producer.run(consumer)).flatMap(fold.end)
+    def foldRight[A, B](fa: Producer[R, A], lb: Eval[B])(f: (A, Eval[B]) => Eval[B]): Eval[B] = {
+      var s = lb
+      fa.run {
+        case One(a) => s = s >> f(a, s); Eff.pure(())
+        case Done   => Eff.pure(())
+      }
+      s
     }
   }
 
-  def emit[R, A](elements: List[A]): Producer[A] =
-    elements match {
-      case Nil => done
-      case a :: as => yielded[A](a) >> emit(as)
-    }
-
-  def collect[R, A](producer: Producer[A]): Eff[R, List[A]] =
-    foldEff(producer)(Folds.list)
-
-  def flatMap[A, B](producer: Producer[A])(f: A => Producer[B]): Producer[B] =
-    new Generator[B, Unit] {
-      def run[R](consumer: Consumer[R, B]): Eff[R, Unit] =
-        producer.run { ona: On[A] =>
-          ona match {
-            case One(a) =>
-              f(a).run(consumer)
-
-            case Done =>
-              pure(())
-          }
+  def emit[R, A](elements: List[A]): Producer[R, A] =
+    new Generator[R, A, Unit] {
+      def run(consumer: Consumer[R, A]): Eff[R, Unit] =
+        elements match {
+          case Nil     => done.run(consumer)
+          case a :: as => yielded(a).run(consumer) >> emit(as).run(consumer)
         }
     }
 
-  def map[A, B](producer: Producer[A])(f: A => B): Producer[B] =
+  def emitEff[R, A](elements: Eff[R, List[A]]): Producer[R, A] =
+    new Generator[R, A, Unit] {
+      def run(consumer: Consumer[R, A]): Eff[R, Unit] =
+        elements.map {
+          case Nil     => consumer(Done)
+          case a :: as => consumer(One(a)) >> emit(as).run(consumer)
+        }.flatMap(identity _)
+    }
+
+  def collect[R, A](producer: Producer[R, A])(implicit m: Member[Writer[A, ?], R]): Eff[R, Unit] =
+    producer.run {
+      case One(a) => tell(a)
+      case Done   => pure(())
+    }
+
+  def flatMap[R, A, B](producer: Producer[R, A])(f: A => Producer[R, B]): Producer[R, B] =
+    new Generator[R, B, Unit] {
+      def run(consumer: Consumer[R, B]): Eff[R, Unit] =
+        producer.run {
+          case One(a) => f(a).run(consumer)
+          case Done   => pure(())
+        }
+    }
+
+  def map[R, A, B](producer: Producer[R, A])(f: A => B): Producer[R, B] =
     flatMap(producer)(a => yielded(f(a)))
 
-  def flatten[A](producer: Producer[Producer[A]]): Producer[A] =
+  def flatten[R, A](producer: Producer[R, Producer[R, A]]): Producer[R, A] =
     flatMap(producer)(identity)
 
-  def filter[A](producer: Producer[A])(f: A => Boolean): Producer[A] =
+  def filter[R, A](producer: Producer[R, A])(f: A => Boolean): Producer[R, A] =
     flatMap(producer)((a: A) => if (f(a)) yielded (a) else done)
 
-  def flattenList[A](producer: Producer[List[A]]): Producer[A] =
+  def flattenList[R, A](producer: Producer[R, List[A]]): Producer[R, A] =
     flatMap(producer)(emit)
 
-  def chunk[A](size: Int)(producer: Producer[A]): Producer[List[A]] =
-    new Generator[List[A], Unit] {
-      def run[R](consumer: Consumer[R, List[A]]): Eff[R, Unit] = {
+  def chunk[R, A](size: Int)(producer: Producer[R, A]): Producer[R, List[A]] =
+    new Generator[R, List[A], Unit] {
+      def run(consumer: Consumer[R, List[A]]): Eff[R, Unit] = {
         val elements = new collection.mutable.ListBuffer[A]
-        producer.run { ona: On[A] =>
-          ona match {
-            case One(a) =>
-              elements.append(a)
-              if (elements.size >= size) {
-                val es = elements.toList
-                elements.clear
-                consumer(One(es))
-              }
-              else pure(())
+        producer.run {
+          case One(a) =>
+            elements.append(a)
+            if (elements.size >= size) {
+              val es = elements.toList
+              elements.clear
+              consumer(One(es))
+            }
+            else pure(())
 
-            case Done =>
-              consumer(One(elements.toList)) >> consumer(Done)
-          }
+          case Done =>
+            consumer(One(elements.toList)) >> consumer(Done)
         }
       }
     }
+
+  def sequence[R, F[_], A](chunks: Int)(producer: Producer[R, Eff[R, A]])(implicit f: Member[F, R]) =
+    chunk(4)(producer).flatMap { actions => emitEff(Eff.sequenceA(actions)) }
 
 }
