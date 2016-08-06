@@ -79,6 +79,16 @@ object Generator { outer =>
         p1.run(consumer) >> p2.run(consumer)
     }
 
+  def pipe[R, A, B](p: Producer[R, A], t: Transducer[R, A, B]): Producer[R, B] =
+    t(p)
+
+  def transducer[R, A, B](f: A => B): Transducer[R, A, B] =
+    (p: Producer[R, A]) => p.map(f)
+
+  def receive[R, A, B](f: A => Producer[R, B]): Transducer[R, A, B] =
+    (p: Producer[R, A]) =>
+      flatMap(p)(f)
+
   def emit[R, A](elements: List[A]): Producer[R, A] =
     new Generator[R, A, Unit] {
       def run(consumer: Consumer[R, A]): Eff[R, Unit] =
