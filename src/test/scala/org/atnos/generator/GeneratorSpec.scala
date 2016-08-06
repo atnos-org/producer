@@ -22,7 +22,7 @@ class GeneratorSpec(implicit ee: ExecutionEnv) extends Specification with ScalaC
 
 """
 
-  type S = Writer[Int, ?] |: NoEffect
+  type S = Fx.fx1[Writer[Int, ?]]
 
   def emitCollect = prop { xs: List[Int] =>
     collect[S, Int](emit(xs)).runWriterLog.run ==== xs
@@ -33,7 +33,7 @@ class GeneratorSpec(implicit ee: ExecutionEnv) extends Specification with ScalaC
   }
 
   def chunkProducer = prop { (xs: List[Int], n: Int) =>
-    collect[Writer[List[Int], ?] |: NoEffect, List[Int]](chunk(n)(emit(xs))).runWriterLog.run.flatten ==== xs
+    collect[Fx.fx1[Writer[List[Int], ?]], List[Int]](chunk(n)(emit(xs))).runWriterLog.run.flatten ==== xs
   }.setGen2(Gen.choose(0, 5)).noShrink
 
   def flattenList1 = prop { (xs: List[Int], n: Int) =>
@@ -45,9 +45,9 @@ class GeneratorSpec(implicit ee: ExecutionEnv) extends Specification with ScalaC
   }.setGen2(Gen.choose(0, 5)).noShrink
 
   def sequenceFutures = prop { xs: List[Int] =>
-    type SF = Writer[Int, ?] |: Future |: NoEffect
+    type SF = Fx.fx2[Writer[Int, ?], Future]
 
-    def doIt[R](implicit f: Future <= R) =
+    def doIt[R](implicit f: Future |= R) =
       sequence[R, Future, Int](4)(emit(xs.map(x => async(action(x)))))
 
     collect(doIt[SF]).runWriterLog.detach must be_==(xs).await

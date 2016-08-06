@@ -137,7 +137,7 @@ object Generator { outer =>
       }
     }
 
-  def sequence[R, F[_], A](chunks: Int)(producer: Producer[R, Eff[R, A]])(implicit f: Member[F, R]) =
+  def sequence[R, F[_], A](chunks: Int)(producer: Producer[R, Eff[R, A]])(implicit f: F |= R) =
     chunk(4)(producer).flatMap { actions => emitEff(Eff.sequenceA(actions)) }
 
 }
