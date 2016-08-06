@@ -10,6 +10,7 @@ import org.specs2.concurrent.ExecutionEnv
 import scala.concurrent.Future
 import cats.implicits._
 import cats.data.Writer
+import transducers._
 
 class GeneratorSpec(implicit ee: ExecutionEnv) extends Specification with ScalaCheck { def is = s2"""
 
@@ -24,16 +25,19 @@ class GeneratorSpec(implicit ee: ExecutionEnv) extends Specification with ScalaC
   a producer can be followed by another one  $followed
   a producer can be modified by a transducer $transduced
   a producer can be modified by a receiver   $received
+  a receiver can run another producer if the first one is empty  $receivedOr
 
 """
 
   type WriterInt[A]    = Writer[Int, A]
+  type WriterOption[A] = Writer[Option[Int], A]
   type WriterString[A] = Writer[String, A]
   type WriterList[A]   = Writer[List[Int], A]
 
   type S = Fx.fx1[WriterInt]
   type S1 = Fx.fx1[WriterString]
   type SL = Fx.fx1[WriterList]
+  type SO = Fx.fx1[WriterOption]
 
   def emitCollect = prop { xs: List[Int] =>
     emit[S, Int](xs).runLog ==== xs
@@ -86,6 +90,19 @@ class GeneratorSpec(implicit ee: ExecutionEnv) extends Specification with ScalaC
       receive[R, Int, String](a => yielded(f(a)))
 
     (emit[S1, Int](xs) |> plusOne).runLog ==== xs.map(f)
+  }.setGen(Gen.listOf(Gen.choose(1, 100)))
+
+  def receivedOr = prop { xs: List[Int] =>
+    val f = (x: Int) => (x+ 1).toString
+
+    def plusOne[R] =
+      receiveOr[R, Int, String](a => yielded(f(a)))(emit(List("1", "2", "3")))
+
+    (emit[S1, Int](xs) |> plusOne).runLog ==== xs.map(f) ++ List("1", "2", "3")
+  }.setGen(Gen.listOf(Gen.choose(1, 100)))
+
+  def receivedOption = prop { xs: List[Int] =>
+    (emit[SO, Int](xs) |> receiveOption).runLog ==== xs.map(Option(_)) ++ List(None)
   }.setGen(Gen.listOf(Gen.choose(1, 100)))
 
   /**

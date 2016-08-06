@@ -8,6 +8,8 @@ package object generator {
   type Producer[R, E] = Generator[R, E, Unit]
   type Transducer[R, A, B] = Producer[R, A] => Producer[R, B]
 
+  object transducers extends Transducers
+
   implicit class ProducerOps[R, A](p: Producer[R, A]) {
     def filter(f: A => Boolean): Producer[R, A] =
       Generator.filter(p)(f)

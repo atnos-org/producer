@@ -82,13 +82,6 @@ object Generator { outer =>
   def pipe[R, A, B](p: Producer[R, A], t: Transducer[R, A, B]): Producer[R, B] =
     t(p)
 
-  def transducer[R, A, B](f: A => B): Transducer[R, A, B] =
-    (p: Producer[R, A]) => p.map(f)
-
-  def receive[R, A, B](f: A => Producer[R, B]): Transducer[R, A, B] =
-    (p: Producer[R, A]) =>
-      flatMap(p)(f)
-
   def emit[R, A](elements: List[A]): Producer[R, A] =
     new Generator[R, A, Unit] {
       def run(consumer: Consumer[R, A]): Eff[R, Unit] =
@@ -158,3 +151,34 @@ object Generator { outer =>
     chunk(n)(producer).flatMap { actions => emitEff(Eff.sequenceA(actions)) }
 
 }
+
+trait Transducers {
+  import Generator.yielded
+
+  def filter[R, A, B](f: A => Boolean): Transducer[R, A, A] =
+    (p: Producer[R, A]) => Generator.filter(p)(f)
+
+  def map[R, A, B](f: A => B): Transducer[R, A, B] =
+    (p: Producer[R, A]) => Generator.map(p)(f)
+
+  def receive[R, A, B](f: A => Producer[R, B]): Transducer[R, A, B] =
+    (p: Producer[R, A]) => Generator.flatMap(p)(f)
+
+  def transducer[R, A, B](f: A => B): Transducer[R, A, B] =
+    (p: Producer[R, A]) => p.map(f)
+
+  def receiveOr[R, A, B](f: A => Producer[R, B])(or: =>Producer[R, B]): Transducer[R, A, B] =
+    (p: Producer[R, A]) => new Generator[R, B, Unit] {
+      def run(consumer: Consumer[R, B]): Eff[R, Unit] =
+        p.run {
+          case One(a) => f(a).run(consumer)
+          case Done   => or.run(consumer)
+        }
+    }
+
+  def receiveOption[R, A, B]: Transducer[R, A, Option[A]] =
+    receiveOr[R, A, Option[A]]((a: A) => yielded(Option(a)))(yielded(None))
+
+}
+
+object Transducers extends Transducers
