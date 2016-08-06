@@ -20,6 +20,8 @@ class GeneratorSpec(implicit ee: ExecutionEnv) extends Specification with ScalaC
   flattenProducer            $flattenProducer1
   sequence futures           $sequenceFutures
 
+  a producer can be followed by another one $followed
+
 """
 
   type S = Fx.fx1[Writer[Int, ?]]
@@ -53,6 +55,13 @@ class GeneratorSpec(implicit ee: ExecutionEnv) extends Specification with ScalaC
     collect(doIt[SF]).runWriterLog.detach must be_==(xs).await
   }.noShrink.setGen(Gen.listOfN(3, Gen.choose(20, 300))).set(minTestsOk = 1)
 
+  def followed = prop { (xs1: List[Int], xs2: List[Int]) =>
+    collect[S, Int](emit(xs1) > emit(xs2)).runWriterLog.run ==== xs1 ++ xs2
+  }
+
+  /**
+   * HELPERS
+   */
   def action(x: Int) = {
     Thread.sleep(x.toLong)
     x

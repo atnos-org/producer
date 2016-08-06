@@ -72,6 +72,13 @@ object Generator { outer =>
     }
   }
 
+
+  def append[R, A](p1: Producer[R, A], p2: Producer[R, A]): Producer[R, A] =
+    new Generator[R, A, Unit] {
+      def run(consumer: Consumer[R, A]): Eff[R, Unit] =
+        p1.run(consumer) >> p2.run(consumer)
+    }
+
   def emit[R, A](elements: List[A]): Producer[R, A] =
     new Generator[R, A, Unit] {
       def run(consumer: Consumer[R, A]): Eff[R, Unit] =
@@ -137,7 +144,7 @@ object Generator { outer =>
       }
     }
 
-  def sequence[R, F[_], A](chunks: Int)(producer: Producer[R, Eff[R, A]])(implicit f: F |= R) =
-    chunk(4)(producer).flatMap { actions => emitEff(Eff.sequenceA(actions)) }
+  def sequence[R, F[_], A](n: Int)(producer: Producer[R, Eff[R, A]])(implicit f: F |= R) =
+    chunk(n)(producer).flatMap { actions => emitEff(Eff.sequenceA(actions)) }
 
 }
