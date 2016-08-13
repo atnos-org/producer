@@ -1,5 +1,4 @@
-lazy val effcatsVersion = "2.0-preview-2"
-lazy val origamiVersion = "1.0-20160806141212-0999e1b"
+lazy val effcatsVersion = "2.0.0-RC2"
 lazy val specs2Version  = "3.8.4"
 
 libraryDependencies :=
@@ -17,9 +16,6 @@ addCompilerPlugin("com.milessabin" % "si2712fix-plugin_2.11.8" % "1.2.0")
 
 lazy val effcats = Seq(
   "org.atnos" %% "eff-cats" % effcatsVersion)
-
-lazy val origami = Seq(
-  "org.atnos" %% "origami-eff-cats" % origamiVersion)
 
 lazy val specs2 = Seq(
     "org.specs2" %% "specs2-core"

@@ -6,7 +6,7 @@ import cats.implicits._
 import org.atnos.eff._
 import all._
 import syntax.all._
-import org.atnos.origami._
+import org.atnos.origami._, fold._
 
 trait Generator[R, E, A] {
   def run(consumer: Consumer[R, E]): Eff[R, A]
@@ -45,12 +45,6 @@ object Generator { outer =>
     def run(consumer: Consumer[R, E]): Eff[R, Unit] =
       consumer(Done)
   }
-
-  def foldG[R, S, E](producer: Producer[R, E])(fold: (S, E) => Eff[R, S])(initial: S): Eff[R, S] =
-    foldEff(producer)(FoldEff.fromFoldLeft(initial)(fold))
-
-  def foldEff[R, E, A](producer: Producer[R, E])(fold: FoldEff[R, E, A]): Eff[R, A] =
-    fold.run(producer)
 
   implicit def FoldableProducer[R]: Foldable[Producer[R, ?]] = new Foldable[Producer[R, ?]] {
     def foldLeft[A, B](fa: Producer[R, A], b: B)(f: (B, A) => B): B = {
@@ -97,7 +91,7 @@ object Generator { outer =>
         elements.map {
           case Nil     => consumer(Done)
           case a :: as => consumer(One(a)) >> emit(as).run(consumer)
-        }.flatMap(identity _)
+        }.flatMap(identity)
     }
 
   def collect[R, A](producer: Producer[R, A])(implicit m: Member[Writer[A, ?], R]): Eff[R, Unit] =
