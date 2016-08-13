@@ -209,6 +209,23 @@ trait Transducers {
         else if (n == 1) as
         else  drop(n - 1)(as))
 
+  def dropRight[R, A](n: Int): Transducer[R, A, A] =
+    (producer: Producer[R, A]) => {
+       def go(p: Producer[R, A], elements: Vector[A]): Producer[R, A] =
+         Producer(peek(p).flatMap {
+           case (Some(a), as) =>
+             val es = elements :+ a
+             if (es.size >= n) (emit(es.toList) append go(as, Vector.empty[A])).run
+             else go(as, es).run
+
+           case (None, _) =>
+             if (elements.size <= n) done.run
+             else emit(elements.toList).run
+
+         })
+      go(producer, Vector.empty[A])
+    }
+
   def take[R, A](n: Int): Transducer[R, A, A] =
     cata_[R, A, A](
       done[R, A],
@@ -218,9 +235,17 @@ trait Transducers {
         else if (n == 1) one(a)
         else  one(a) append take(n - 1)(as))
 
+  def zipWithPrevious[R, A]: Transducer[R, A, (Option[A], A)] =
+    (p: Producer[R, A]) =>
+      (one(None: Option[A]) append (p |> dropRight(1)).map(Option(_))) zip p
+
   def zipWithNext[R, A]: Transducer[R, A, (A, Option[A])] =
     (p: Producer[R, A]) =>
       p zip ((p |> drop(1)).map(Option(_)) append one(None))
+
+  def zipWithPreviousAndNext[R, A]: Transducer[R, A, (Option[A], A, Option[A])] =
+    (p: Producer[R, A]) =>
+      ((p |> zipWithPrevious) zip (p |> zipWithNext)).map { case ((p, a), (_, n)) => (p, a, n) }
 
   private def cata_[R, A, B](onDone: Producer[R, B], onOne: A => Producer[R, B], onMore: (A, Producer[R, A]) => Producer[R, B]): Transducer[R, A, B] =
     (producer: Producer[R, A]) => cata(producer)(onDone, onOne, onMore)

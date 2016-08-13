@@ -43,7 +43,9 @@ class ProducerSpec(implicit ee: ExecutionEnv) extends Specification with ScalaCh
   take(n) $takeN
   take(n) + exception $takeException
 
-  zipWithNext $zipWithNextElement
+  zipWithPrevious        $zipWithPreviousElement
+  zipWithNext            $zipWithNextElement
+  zipWithPreviousAndNext $zipWithPreviousAndNextElement
 
 """
 
@@ -170,6 +172,17 @@ class ProducerSpec(implicit ee: ExecutionEnv) extends Specification with ScalaCh
 
   def zipWithNextElement = prop { xs: List[Int] =>
     (emit[NoFx, Int](xs) |> zipWithNext).toList ==== (xs zip (xs.drop(1).map(Option(_)) :+ None))
+  }
+
+  def zipWithPreviousElement = prop { xs: List[Int] =>
+    (emit[NoFx, Int](xs) |> zipWithPrevious).toList ==== ((None +: xs.dropRight(1).map(Option(_))) zip xs)
+  }
+
+  def zipWithPreviousAndNextElement = prop { xs: List[Int] =>
+    val ls = emit[NoFx, Int](xs)
+    (ls |> zipWithPreviousAndNext).toList ====
+    (ls |> zipWithPrevious).zip(ls |> zipWithNext).map { case ((previous, a), (_, next)) => (previous, a, next) }.toList
+
   }
 
   /**
