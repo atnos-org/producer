@@ -46,8 +46,8 @@ object Generator { outer =>
       consumer(Done)
   }
 
-  implicit def FoldableProducer[R]: Foldable[Producer[R, ?]] = new Foldable[Producer[R, ?]] {
-    def foldLeft[A, B](fa: Producer[R, A], b: B)(f: (B, A) => B): B = {
+  implicit def FoldableProducer: Foldable[Producer[NoFx, ?]] = new Foldable[Producer[NoFx, ?]] {
+    def foldLeft[A, B](fa: Producer[NoFx, A], b: B)(f: (B, A) => B): B = {
       var s = b
       fa.run {
         case One(a) => s = f(s, a); Eff.pure(())
@@ -56,7 +56,7 @@ object Generator { outer =>
       s
     }
 
-    def foldRight[A, B](fa: Producer[R, A], lb: Eval[B])(f: (A, Eval[B]) => Eval[B]): Eval[B] = {
+    def foldRight[A, B](fa: Producer[NoFx, A], lb: Eval[B])(f: (A, Eval[B]) => Eval[B]): Eval[B] = {
       var s = lb
       fa.run {
         case One(a) => s = s >> f(a, s); Eff.pure(())
@@ -66,6 +66,15 @@ object Generator { outer =>
     }
   }
 
+  def fold[R, A, B, S](producer: Producer[R, A])(start: Eff[R, S], f: (S, A) => S, end: S => Eff[R, B]): Eff[R, B] = {
+    start.flatMap { s =>
+      var _state = s
+      producer.run {
+        case One(a) => pure(_state = f(_state, a))
+        case Done   => pure(())
+      } flatMap (_ => end(_state))
+    }
+  }
 
   def append[R, A](p1: Producer[R, A], p2: Producer[R, A]): Producer[R, A] =
     new Generator[R, A, Unit] {
@@ -73,8 +82,17 @@ object Generator { outer =>
         p1.run(consumer) >> p2.run(consumer)
     }
 
+  def empty[R, A]: Producer[R, A] =
+    new Generator[R, A, Unit] {
+      def run(consumer: Consumer[R, A]): Eff[R, Unit] =
+        consumer(Done)
+    }
+
   def pipe[R, A, B](p: Producer[R, A], t: Transducer[R, A, B]): Producer[R, B] =
     t(p)
+
+  def one[R, A](a: A): Producer[R, A] =
+    emit(List(a))
 
   def emit[R, A](elements: List[A]): Producer[R, A] =
     new Generator[R, A, Unit] {
