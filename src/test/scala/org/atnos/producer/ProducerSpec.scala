@@ -43,6 +43,8 @@ class ProducerSpec(implicit ee: ExecutionEnv) extends Specification with ScalaCh
   take(n) $takeN
   take(n) + exception $takeException
 
+  zipWithNext $zipWithNextElement
+
 """
 
   def monoid = prop { (p1: ProducerWriterInt, p2: ProducerWriterInt, p3: ProducerWriterInt) =>
@@ -164,6 +166,10 @@ class ProducerSpec(implicit ee: ExecutionEnv) extends Specification with ScalaCh
 
     val producer = emit[R, Int](List(1)) append emitEff[R, Int](delay { throw new Exception("boom"); List(1) })
     (producer |> take(1)).runLog.runEval.run ==== List(1)
+  }
+
+  def zipWithNextElement = prop { xs: List[Int] =>
+    (emit[NoFx, Int](xs) |> zipWithNext).toList ==== (xs zip (xs.drop(1).map(Option(_)) :+ None))
   }
 
   /**

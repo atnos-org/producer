@@ -3,7 +3,6 @@ lazy val specs2Version  = "3.8.4"
 
 libraryDependencies :=
   effcats ++
-  origami ++
   specs2
 
 resolvers ++= Seq(

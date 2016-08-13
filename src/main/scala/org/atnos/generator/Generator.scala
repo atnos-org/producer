@@ -6,7 +6,6 @@ import cats.implicits._
 import org.atnos.eff._
 import all._
 import syntax.all._
-import org.atnos.origami._, fold._
 
 trait Generator[R, E, A] {
   def run(consumer: Consumer[R, E]): Eff[R, A]

@@ -15,11 +15,10 @@ case class More[R, A](a: A, run: Producer[R, A]) extends Stream[R, A]
 case class Producer[R, A](run: Eff[R, Stream[R, A]]) {
 
   def flatMap[B](f: A => Producer[R, B]): Producer[R, B] =
-    Producer(run.flatMap {
-      case Done() => done[R, B].run
-      case One(a) => f(a).run
-      case More(a, as) => (f(a) append as.flatMap(f)).run
-    })
+    cata[R, A, B](this)(
+      done[R, B],
+      (a: A) => f(a),
+      (a: A, as: Producer[R, A]) => f(a) append as.flatMap(f))
 
   def map[B](f: A => B): Producer[R, B] =
     flatMap(a => one(f(a)))
@@ -31,22 +30,40 @@ case class Producer[R, A](run: Eff[R, Stream[R, A]]) {
       case More(a, as) => pure(More(a, as append other))
     })
 
+  def zip[B](other: Producer[R, B]): Producer[R, (A, B)] =
+    Producer(run flatMap {
+      case Done() => done.run
+      case One(a) =>
+        peek(other).flatMap {
+          case (Some(b), bs) => one((a, b)).run
+          case (None, _)     => done.run
+        }
+
+      case More(a, as) =>
+        peek(other).flatMap {
+          case (Some(b), bs) => (one((a, b)) append (as zip bs)).run
+          case (None, _)     => done.run
+        }
+    })
 }
 
 
 object Producer {
 
-  def one[R, A](a: A): Producer[R, A] =
-    Producer[R, A](pure(One(a)))
-
   def done[R, A]: Producer[R, A] =
     Producer[R, A](pure(Done()))
+
+  def one[R, A](a: A): Producer[R, A] =
+    Producer[R, A](pure(One(a)))
 
   def emit[R, A](elements: List[A]): Producer[R, A] =
     elements match {
       case Nil => done[R, A]
       case a :: as => one[R, A](a) append emit(as)
     }
+
+  def eval[R, A](a: Eff[R, A]): Producer[R, A] =
+    Producer(a.map(One(_)))
 
   def emitEff[R, A](elements: Eff[R, List[A]]): Producer[R, A] =
     Producer(elements flatMap {
@@ -151,6 +168,13 @@ object Producer {
   def sequence[R, F[_], A](n: Int)(producer: Producer[R, Eff[R, A]])(implicit f: F |= R) =
     chunk(n)(producer).flatMap { actions => emitEff(Eff.sequenceA(actions)) }
 
+  private[producer] def cata[R, A, B](producer: Producer[R, A])(onDone: Producer[R, B], onOne: A => Producer[R, B], onMore: (A, Producer[R, A]) => Producer[R, B]): Producer[R, B] =
+    Producer[R, B](producer.run.flatMap {
+      case Done() => onDone.run
+      case One(a) => onOne(a).run
+      case More(a, as) => onMore(a, as).run
+    })
+
 }
 
 
@@ -168,18 +192,25 @@ trait Transducers {
     (p: Producer[R, A]) => p.map(f)
 
   def receiveOr[R, A, B](f: A => Producer[R, B])(or: =>Producer[R, B]): Transducer[R, A, B] =
-    (p: Producer[R, A]) => Producer[R, B](
-      p.run flatMap {
-        case Done() => or.run
-        case One(a) => f(a).run
-        case More(a, as) => f(a).run
-     })
+    cata_[R, A, B](
+      or,
+      (a: A) => f(a),
+      (a: A, as: Producer[R, A]) => f(a))
 
   def receiveOption[R, A, B]: Transducer[R, A, Option[A]] =
     receiveOr[R, A, Option[A]]((a: A) => one(Option(a)))(one(None))
 
+  def drop[R, A](n: Int): Transducer[R, A, A] =
+    cata_[R, A, A](
+      done[R, A],
+      (a: A) => if (n <= 0) one(a) else done,
+      (a: A, as: Producer[R, A]) =>
+        if (n == 0) one(a) append as
+        else if (n == 1) as
+        else  drop(n - 1)(as))
+
   def take[R, A](n: Int): Transducer[R, A, A] =
-    cata[R, A, A](
+    cata_[R, A, A](
       done[R, A],
       (a: A) => if (n <= 0) done else one(a),
       (a: A, as: Producer[R, A]) =>
@@ -187,13 +218,12 @@ trait Transducers {
         else if (n == 1) one(a)
         else  one(a) append take(n - 1)(as))
 
-  private def cata[R, A, B](onDone: Producer[R, B], onOne: A => Producer[R, B], onMore: (A, Producer[R, A]) => Producer[R, B]): Transducer[R, A, B] =
+  def zipWithNext[R, A]: Transducer[R, A, (A, Option[A])] =
     (p: Producer[R, A]) =>
-      Producer[R, B](p.run.flatMap {
-        case Done() => onDone.run
-        case One(a) => onOne(a).run
-        case More(a, as) => onMore(a, as).run
-      })
+      p zip ((p |> drop(1)).map(Option(_)) append one(None))
+
+  private def cata_[R, A, B](onDone: Producer[R, B], onOne: A => Producer[R, B], onMore: (A, Producer[R, A]) => Producer[R, B]): Transducer[R, A, B] =
+    (producer: Producer[R, A]) => cata(producer)(onDone, onOne, onMore)
 }
 
 object Transducers extends Transducers
