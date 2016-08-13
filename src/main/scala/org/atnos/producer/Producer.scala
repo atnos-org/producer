@@ -178,6 +178,22 @@ trait Transducers {
   def receiveOption[R, A, B]: Transducer[R, A, Option[A]] =
     receiveOr[R, A, Option[A]]((a: A) => one(Option(a)))(one(None))
 
+  def take[R, A](n: Int): Transducer[R, A, A] =
+    cata[R, A, A](
+      done[R, A],
+      (a: A) => if (n <= 0) done else one(a),
+      (a: A, as: Producer[R, A]) =>
+        if (n == 0) done
+        else if (n == 1) one(a)
+        else  one(a) append take(n - 1)(as))
+
+  private def cata[R, A, B](onDone: Producer[R, B], onOne: A => Producer[R, B], onMore: (A, Producer[R, A]) => Producer[R, B]): Transducer[R, A, B] =
+    (p: Producer[R, A]) =>
+      Producer[R, B](p.run.flatMap {
+        case Done() => onDone.run
+        case One(a) => onOne(a).run
+        case More(a, as) => onMore(a, as).run
+      })
 }
 
 object Transducers extends Transducers

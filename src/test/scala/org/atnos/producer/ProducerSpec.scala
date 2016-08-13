@@ -40,6 +40,9 @@ class ProducerSpec(implicit ee: ExecutionEnv) extends Specification with ScalaCh
 
   a producer can be injected into a larger set of effects $producerInto
 
+  take(n) $takeN
+  take(n) + exception $takeException
+
 """
 
   def monoid = prop { (p1: ProducerWriterInt, p2: ProducerWriterInt, p3: ProducerWriterInt) =>
@@ -150,6 +153,17 @@ class ProducerSpec(implicit ee: ExecutionEnv) extends Specification with ScalaCh
 
   def producerInto = prop { xs: List[Int] =>
     emit[Fx.fx1[Eval], Int](xs).into[Fx.fx2[WriterInt, Eval]].runLog.runEval.run === xs
+  }
+
+  def takeN = prop { (xs: List[Int], n: Int) =>
+    (emit[S, Int](xs) |> take(n)).runLog ==== xs.take(n)
+  }.setGen2(Gen.choose(0, 10))
+
+  def takeException = prop { n: Int =>
+    type R = Fx.fx2[WriterInt, Eval]
+
+    val producer = emit[R, Int](List(1)) append emitEff[R, Int](delay { throw new Exception("boom"); List(1) })
+    (producer |> take(1)).runLog.runEval.run ==== List(1)
   }
 
   /**
