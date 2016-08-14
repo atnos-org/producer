@@ -2,6 +2,7 @@ package org.atnos.producer
 
 import org.atnos.eff._
 import org.atnos.eff.all._
+import org.atnos.eff.syntax.all._
 import org.atnos.producer.Producer._
 import org.scalacheck._
 import org.specs2._
@@ -27,6 +28,8 @@ class ProducerSpec(implicit ee: ExecutionEnv) extends Specification with ScalaCh
 
   emit / collect             $emitCollect
   emit / filter / collect    $emitFilterCollect
+  repeat a value             $repeat1
+  repeat a producer          $repeat2
   chunk                      $chunkProducer
   flattenList                $flattenList1
   flattenProducer            $flattenProducer1
@@ -96,6 +99,14 @@ class ProducerSpec(implicit ee: ExecutionEnv) extends Specification with ScalaCh
   def emitFilterCollect = prop { xs: List[Int] =>
     emit[S, Int](xs).filter(_ > 2).runLog ==== xs.filter(_ > 2)
   }
+
+  def repeat1 = prop { n: Int =>
+    collect(repeatValue[Fx.prepend[Eval, S], Int](1).take(n)).runEval.runWriterLog.run ==== List.fill(n)(1)
+  }.setGen(Gen.choose(0, 10))
+
+  def repeat2 = prop { n: Int =>
+    collect(repeat[Fx.prepend[Eval, S], Int](one(1)).take(n)).runEval.runWriterLog.run ==== List.fill(n)(1)
+  }.setGen(Gen.choose(0, 10))
 
   def chunkProducer = prop { (xs: List[Int], n: Int) =>
     emit[SL, Int](xs).chunk(n).runLog.flatten ==== xs
@@ -208,6 +219,11 @@ class ProducerSpec(implicit ee: ExecutionEnv) extends Specification with ScalaCh
   implicit class ProducerOperations[W](p: Producer[Fx1[Writer[W, ?]], W]) {
     def runLog: List[W] =
       collect[Fx1[Writer[W, ?]], W](p).runWriterLog.run
+  }
+
+  implicit class EffOperations[W](e: Eff[Fx1[Writer[W, ?]], W]) {
+    def runLog: List[W] =
+      e.runWriterLog.run
   }
 
   implicit class ProducerOperations2[W, U[_]](p: Producer[Fx2[Writer[W, ?], U], W]) {

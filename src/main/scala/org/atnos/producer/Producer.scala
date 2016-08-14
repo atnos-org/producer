@@ -56,6 +56,20 @@ object Producer {
   def one[R, A](a: A): Producer[R, A] =
     Producer[R, A](pure(One(a)))
 
+  def repeat[R :_eval, A](p: Producer[R, A]): Producer[R, A] =
+    Producer(p.run flatMap {
+      case Done() => pure(Done())
+      case One(a) => delay(More(a, repeat(p)))
+      case More(a, as) => delay(More(a, as append repeat(p)))
+    })
+
+  def repeatValue[R :_eval, A](a: A): Producer[R, A] =
+    Producer(delay(More(a, repeatValue(a))))
+
+  def fill[R, A](n: Int)(p: Producer[R, A]): Producer[R, A] =
+    if (n <= 0) done[R, A]
+    else p append fill(n - 1)(p)
+
   def emit[R, A](elements: List[A]): Producer[R, A] =
     elements match {
       case Nil => done[R, A]
@@ -182,9 +196,6 @@ trait Transducers {
   def filter[R, A, B](f: A => Boolean): Transducer[R, A, A] =
     (p: Producer[R, A]) => Producer.filter(p)(f)
 
-  def map[R, A, B](f: A => B): Transducer[R, A, B] =
-    (p: Producer[R, A]) => p map f
-
   def receive[R, A, B](f: A => Producer[R, B]): Transducer[R, A, B] =
     (p: Producer[R, A]) => p.flatMap(f)
 
@@ -245,7 +256,7 @@ trait Transducers {
 
   def zipWithPreviousAndNext[R, A]: Transducer[R, A, (Option[A], A, Option[A])] =
     (p: Producer[R, A]) =>
-      ((p |> zipWithPrevious) zip (p |> zipWithNext)).map { case ((p, a), (_, n)) => (p, a, n) }
+      ((p |> zipWithPrevious) zip (p |> zipWithNext)).map { case ((prev, a), (_, next)) => (prev, a, next) }
 
   private def cata_[R, A, B](onDone: Producer[R, B], onOne: A => Producer[R, B], onMore: (A, Producer[R, A]) => Producer[R, B]): Transducer[R, A, B] =
     (producer: Producer[R, A]) => cata(producer)(onDone, onOne, onMore)

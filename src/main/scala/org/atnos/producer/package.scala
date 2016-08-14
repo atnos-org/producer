@@ -1,6 +1,6 @@
 package org.atnos
 
-import org.atnos.eff._
+import org.atnos.eff._, eval._
 
 package object producer {
 
@@ -28,6 +28,11 @@ package object producer {
       Producer.into(p)
   }
 
+  implicit class LazyProducerOps[R :_eval, A](p: Producer[R, A]) {
+    def repeat: Producer[R, A] =
+      Producer.repeat(p)
+  }
+
   implicit class ProducerListOps[R, A](p: Producer[R, List[A]]) {
     def flattenList: Producer[R, A] =
       Producer.flattenList(p)
@@ -36,7 +41,32 @@ package object producer {
   implicit class ProducerFlattenOps[R, A](p: Producer[R, Producer[R, A]]) {
     def flatten: Producer[R, A] =
       Producer.flatten(p)
+  }
 
+  implicit class ProducerTransducerOps[R, A](p: Producer[R, A]) {
+    def receiveOr[B](f: A => Producer[R, B])(or: =>Producer[R, B]): Producer[R, B] =
+      p |> transducers.receiveOr(f)(or)
+
+    def receiveOption[B]: Producer[R, Option[A]] =
+      p |> transducers.receiveOption
+
+    def drop(n: Int): Producer[R, A] =
+      p |> transducers.drop(n)
+
+    def dropRight(n: Int): Producer[R, A] =
+      p |> transducers.dropRight(n)
+
+    def take(n: Int): Producer[R, A] =
+      p |> transducers.take(n)
+
+    def zipWithPrevious: Producer[R, (Option[A], A)] =
+      p |> transducers.zipWithPrevious
+
+    def zipWithNext: Producer[R, (A, Option[A])] =
+      p |> transducers.zipWithNext
+
+    def zipWithPreviousAndNext: Producer[R, (Option[A], A, Option[A])] =
+      p |> transducers.zipWithPreviousAndNext
   }
 
 }
