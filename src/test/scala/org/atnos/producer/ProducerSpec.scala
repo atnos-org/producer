@@ -30,6 +30,7 @@ class ProducerSpec(implicit ee: ExecutionEnv) extends Specification with ScalaCh
   emit / filter / collect    $emitFilterCollect
   repeat a value             $repeat1
   repeat a producer          $repeat2
+  slide                      $slidingProducer
   chunk                      $chunkProducer
   flattenList                $flattenList1
   flattenProducer            $flattenProducer1
@@ -108,12 +109,16 @@ class ProducerSpec(implicit ee: ExecutionEnv) extends Specification with ScalaCh
     collect(repeat[Fx.prepend[Eval, S], Int](one(1)).take(n)).runEval.runWriterLog.run ==== List.fill(n)(1)
   }.setGen(Gen.choose(0, 10))
 
+  def slidingProducer = prop { (xs: List[Int], n: Int) =>
+    emit[SL, Int](xs).sliding(n).runLog.flatten ==== xs
+  }.setGen2(Gen.choose(0, 5)).noShrink
+
   def chunkProducer = prop { (xs: List[Int], n: Int) =>
-    emit[SL, Int](xs).chunk(n).runLog.flatten ==== xs
+    emit[S, Int](xs).chunk(n).runLog ==== xs
   }.setGen2(Gen.choose(0, 5)).noShrink
 
   def flattenList1 = prop { (xs: List[Int], n: Int) =>
-    emit[S, Int](xs).chunk(n).flattenList.runLog ==== xs
+    emit[S, Int](xs).sliding(n).flattenList.runLog ==== xs
   }.setGen2(Gen.choose(0, 5)).noShrink
 
   def flattenProducer1 = prop { (xs: List[Int], n: Int) =>

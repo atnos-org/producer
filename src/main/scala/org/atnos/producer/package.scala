@@ -12,7 +12,10 @@ package object producer {
     def filter(f: A => Boolean): Producer[R, A] =
       Producer.filter(p)(f)
 
-    def chunk(n: Int): Producer[R, List[A]] =
+    def sliding(n: Int): Producer[R, List[A]] =
+      Producer.sliding(n)(p)
+
+    def chunk(n: Int): Producer[R, A] =
       Producer.chunk(n)(p)
 
     def >(p2: Producer[R, A]): Producer[R, A] =
