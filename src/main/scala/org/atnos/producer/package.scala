@@ -1,6 +1,9 @@
 package org.atnos
 
-import org.atnos.eff._, eval._
+import cats.data.Xor
+import org.atnos.eff._
+import eval._
+import safe._
 
 package object producer {
 
@@ -74,5 +77,22 @@ package object producer {
     def zipWithIndex: Producer[R, (A, Int)] =
       p |> transducers.zipWithIndex
   }
+
+  implicit class ProducerResourcesOps[R, A](p: Producer[R, A])(implicit s: Safe <= R) {
+    def `finally`(e: Eff[R, Unit]): Producer[R, A] =
+      Producer[R, A](andFinally(p.run, e))
+
+    def attempt: Producer[R, Throwable Xor A] =
+      Producer[R, Throwable Xor A](SafeInterpretation.attempt(p.run) map {
+        case Xor.Right(Done()) => Done()
+        case Xor.Right(One(a)) => One(Xor.Right(a))
+        case Xor.Right(More(as, next)) => More(as.map(Xor.right), next.map(Xor.right))
+
+        case Xor.Left(t) => One(Xor.left(t))
+      })
+  }
+
+  def bracket[R, A, B, C](open: Eff[R, A])(step: A => Producer[R, B])(close: A => Eff[R, C])(implicit s: Safe <= R): Producer[R, B] =
+    Producer[R, B](SafeInterpretation.bracket(open)((a: A) => step(a).run)(close))
 
 }
