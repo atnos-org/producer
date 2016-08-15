@@ -5,11 +5,11 @@ import com.ambiata.promulgate.project.ProjectPlugin.promulgate
 import Defaults.{defaultTestTasks, testTaskOptions}
 import sbtrelease._
 
-lazy val yielded = project.in(file("."))
-  .settings(moduleName := "yielded")
+lazy val producer = project.in(file("."))
+  .settings(moduleName := "producer")
   .settings(buildSettings)
   .settings(publishSettings)
-  .settings(promulgate.library("org.atnos", "yielded"):_*)
+  .settings(promulgate.library("org.atnos", "producer"):_*)
   .settings(commonSettings)
 
 lazy val buildSettings = Seq(
@@ -28,11 +28,11 @@ lazy val tagName = Def.setting{
 
 lazy val publishSettings =
   Seq(
-  homepage := Some(url("https://github.com/atnos-org/yielded")),
+  homepage := Some(url("https://github.com/atnos-org/producer")),
   licenses := Seq("MIT" -> url("http://opensource.org/licenses/MIT")),
-  scmInfo := Some(ScmInfo(url("https://github.com/atnos-org/yielded"), "scm:git:git@github.com:atnos-org/yielded.git")),
+  scmInfo := Some(ScmInfo(url("https://github.com/atnos-org/producer"), "scm:git:git@github.com:atnos-org/producer.git")),
   autoAPIMappings := true,
-  apiURL := Some(url("http://atnos.org/yielded/api/")),
+  apiURL := Some(url("http://atnos.org/producer/api/")),
   pomExtra := (
     <developers>
       <developer>
@@ -76,7 +76,7 @@ lazy val userGuideSettings =
     GhPagesKeys.ghpagesNoJekyll := false,
     SiteKeys.siteSourceDirectory in SiteKeys.makeSite := target.value / "specs2-reports" / "site",
     includeFilter in SiteKeys.makeSite := "*.html" | "*.css" | "*.png" | "*.jpg" | "*.gif" | "*.js",
-    git.remoteRepo := "git@github.com:atnos-org/yielded.git"
+    git.remoteRepo := "git@github.com:atnos-org/producer.git"
   )
 
 lazy val sharedReleaseProcess = Seq(
@@ -98,7 +98,7 @@ lazy val sharedReleaseProcess = Seq(
 ) ++
   Seq(
     releaseNextVersion := { v => Version(v).map(_.bumpBugfix.string).getOrElse(versionFormatError) },
-    releaseTagName <<= (releaseVersion, version) map  { (rv, v) => "YIELDED-" + rv(v) }
+    releaseTagName <<= (releaseVersion, version) map  { (rv, v) => "PRODUCER-" + rv(v) }
   ) ++
   testTaskDefinition(generateWebsiteTask, Seq(Tests.Filter(_.endsWith("Website"))))
 
@@ -125,7 +125,7 @@ lazy val credentialSettings = Seq(
 
 lazy val prompt = shellPrompt in ThisBuild := { state =>
   val name = Project.extract(state).currentRef.project
-  (if (name == "yielded") "" else name) + "> "
+  (if (name == "producer") "" else name) + "> "
 }
 
 def executeTask(task: TaskKey[_], info: String) = (st: State) => {

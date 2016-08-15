@@ -7,7 +7,7 @@ sbt> testOnly *index* -- html.outdir jvm/target/specs2-reports/site html.nostats
 sbt> testOnly *site* -- html.outdir jvm/target/specs2-reports/site html.nostats html console
 sbt> makeSite
 sbt> ghpagesPushSite
-sbt> project yielded
+sbt> project producer
 sbt> publishSigned
 sbt> sonatypeReleaseAll
 ```
