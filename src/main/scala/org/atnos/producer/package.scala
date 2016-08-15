@@ -70,6 +70,9 @@ package object producer {
 
     def zipWithPreviousAndNext: Producer[R, (Option[A], A, Option[A])] =
       p |> transducers.zipWithPreviousAndNext
+
+    def zipWithIndex: Producer[R, (A, Int)] =
+      p |> transducers.zipWithIndex
   }
 
 }

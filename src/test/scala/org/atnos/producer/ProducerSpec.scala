@@ -50,7 +50,7 @@ class ProducerSpec(implicit ee: ExecutionEnv) extends Specification with ScalaCh
   zipWithPrevious        $zipWithPreviousElement
   zipWithNext            $zipWithNextElement
   zipWithPreviousAndNext $zipWithPreviousAndNextElement
-
+  zipWithIndex           $zipWithIndex1
 """
 
   def monoid = prop { (p1: ProducerWriterInt, p2: ProducerWriterInt, p3: ProducerWriterInt) =>
@@ -198,7 +198,10 @@ class ProducerSpec(implicit ee: ExecutionEnv) extends Specification with ScalaCh
     val ls = emit[NoFx, Int](xs)
     (ls |> zipWithPreviousAndNext).toList ====
     (ls |> zipWithPrevious).zip(ls |> zipWithNext).map { case ((previous, a), (_, next)) => (previous, a, next) }.toList
+  }
 
+  def zipWithIndex1 = prop { xs: List[Int] =>
+    emit[NoFx, Int](xs).zipWithIndex.toList ==== xs.zipWithIndex
   }
 
   /**

@@ -325,6 +325,35 @@ trait Transducers {
     (p: Producer[R, A]) =>
       ((p |> zipWithPrevious) zip (p |> zipWithNext)).map { case ((prev, a), (_, next)) => (prev, a, next) }
 
+
+  def zipWithIndex[R, A]: Transducer[R, A, (A, Int)] =
+    zipWithState[R, A, Int](0)((_, n: Int) => n + 1)
+
+  def zipWithState[R, A, B](b: B)(f: (A, B) => B): Transducer[R, A, (A, B)] =
+    (producer: Producer[R, A]) => {
+      def go(p: Producer[R, A], state: B): Producer[R, (A, B)] =
+      Producer[R, (A, B)] {
+        producer.run flatMap {
+          case Done() => done.run
+          case One(a) => one((a, state)).run
+
+          case More(as, next) =>
+            val zipped: Vector[(A, B)] =
+              as match {
+                case Nil => Vector.empty
+                case a :: rest => rest.foldLeft((Vector((a, state)), state)) { case ((ls, s), cur) =>
+                  val newState = f(cur, s)
+                  (ls :+ ((cur, newState)), newState)
+                }._1
+              }
+
+            (emit(zipped.toList) append zipWithState(b)(f)(next)).run
+
+        }
+      }
+      go(producer, b)
+    }
+
   private def cata_[R, A, B](onDone: Producer[R, B], onOne: A => Producer[R, B], onMore: (List[A], Producer[R, A]) => Producer[R, B]): Transducer[R, A, B] =
     (producer: Producer[R, A]) => cata(producer)(onDone, onOne, onMore)
 }
