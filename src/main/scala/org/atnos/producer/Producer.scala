@@ -247,12 +247,28 @@ trait Transducers {
         else  one(a) append take(n - 1)(as))
 
   def zipWithPrevious[R, A]: Transducer[R, A, (Option[A], A)] =
-    (p: Producer[R, A]) =>
-      (one(None: Option[A]) append (p |> dropRight(1)).map(Option(_))) zip p
+    (producer: Producer[R, A]) => {
+      def go(p: Producer[R, A], previous: Option[A]): Producer[R, (Option[A], A)] =
+        Producer(peek(p) flatMap {
+          case (Some(a), as) => (one((previous, a)) append go(as, Option(a))).run
+          case (None, _)     => done.run
+        })
+
+      go(producer, None)
+    }
 
   def zipWithNext[R, A]: Transducer[R, A, (A, Option[A])] =
-    (p: Producer[R, A]) =>
-      p zip ((p |> drop(1)).map(Option(_)) append one(None))
+    (producer: Producer[R, A]) => {
+      def go(p: Producer[R, A], previous: A): Producer[R, (A, Option[A])] =
+        Producer(peek(p) flatMap {
+          case (Some(a), as) => (one((previous, Option(a))) append go(as, a)).run
+          case (None, _)     => one[R, (A, Option[A])]((previous, None)).run
+        })
+      Producer(peek(producer) flatMap {
+        case (Some(a), as) => go(as, a).run
+        case (None, _) => done.run
+      })
+    }
 
   def zipWithPreviousAndNext[R, A]: Transducer[R, A, (Option[A], A, Option[A])] =
     (p: Producer[R, A]) =>
