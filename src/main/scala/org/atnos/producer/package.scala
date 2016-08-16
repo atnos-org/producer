@@ -3,9 +3,7 @@ package org.atnos
 import cats.Eval
 import cats.data.Xor
 import org.atnos.eff._
-import eval._
-import org.atnos.eff.all.{_eval => _, eval => _, _}
-import safe._
+import org.atnos.eff.all._
 
 package object producer {
 
@@ -14,7 +12,7 @@ package object producer {
   object producers extends Producers
   object transducers extends Transducers
 
-  implicit class ProducerOps[R :_eval, A](p: Producer[R, A]) {
+  implicit class ProducerOps[R :_safe, A](p: Producer[R, A]) {
     def filter(f: A => Boolean): Producer[R, A] =
       Producer.filter(p)(f)
 
@@ -33,7 +31,7 @@ package object producer {
     def pipe[B](t: Transducer[R, A, B]): Producer[R, B] =
       Producer.pipe(p, t)
 
-    def into[U](implicit intoPoly: IntoPoly[R, U], eval: Eval |= U): Producer[U, A] =
+    def into[U](implicit intoPoly: IntoPoly[R, U], s: Safe |= U): Producer[U, A] =
       Producer.into(p)
 
     def fold[B, S](start: Eff[R, S], f: (S, A) => S, end: S => Eff[R, B]): Eff[R, B] =
@@ -52,17 +50,17 @@ package object producer {
       Producer.repeat(p)
   }
 
-  implicit class ProducerListOps[R :_eval, A](p: Producer[R, List[A]]) {
+  implicit class ProducerListOps[R :_safe, A](p: Producer[R, List[A]]) {
     def flattenList: Producer[R, A] =
       Producer.flattenList(p)
   }
 
-  implicit class ProducerFlattenOps[R :_eval, A](p: Producer[R, Producer[R, A]]) {
+  implicit class ProducerFlattenOps[R :_safe, A](p: Producer[R, Producer[R, A]]) {
     def flatten: Producer[R, A] =
       Producer.flatten(p)
   }
 
-  implicit class ProducerTransducerOps[R :_eval, A](p: Producer[R, A]) {
+  implicit class ProducerTransducerOps[R :_safe, A](p: Producer[R, A]) {
     def receiveOr[B](f: A => Producer[R, B])(or: =>Producer[R, B]): Producer[R, B] =
       p |> transducers.receiveOr(f)(or)
 
@@ -97,12 +95,12 @@ package object producer {
        p |> transducers.intersperse(a: A)
   }
 
-  implicit class ProducerResourcesOps[R :_eval, A](p: Producer[R, A])(implicit s: Safe <= R) {
+  implicit class ProducerResourcesOps[R :_safe, A](p: Producer[R, A])(implicit s: Safe <= R) {
     def andFinally(e: Eff[R, Unit]): Producer[R, A] =
       Producer[R, A](p.run flatMap {
         case Done() => safe.andFinally(Producer.done[R, A].run, e)
         case One(a) => safe.andFinally(Producer.one[R, A](a).run, e)
-        case More(as, next) => Eff.pure(More(as, Producer(safe.andFinally(next.run, e))))
+        case More(as, next) => protect(More(as, ProducerResourcesOps(next).andFinally(e)))
       })
 
     def `finally`(e: Eff[R, Unit]): Producer[R, A] =
@@ -118,7 +116,7 @@ package object producer {
       })
   }
 
-  def bracket[R :_eval, A, B, C](open: Eff[R, A])(step: A => Producer[R, B])(close: A => Eff[R, C])(implicit s: Safe <= R): Producer[R, B] =
+  def bracket[R :_safe, A, B, C](open: Eff[R, A])(step: A => Producer[R, B])(close: A => Eff[R, C])(implicit s: Safe <= R): Producer[R, B] =
     Producer[R, B] {
       open flatMap { resource =>
         (step(resource) `finally` close(resource).map(_ => ())).run

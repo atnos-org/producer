@@ -1,4 +1,4 @@
-lazy val effcatsVersion = "2.0.0-RC3"
+lazy val effcatsVersion = "2.0.0-RC4"
 lazy val specs2Version  = "3.8.4"
 lazy val origamiVersion = "2.0.0-20160813102620-cc1f404"
 
@@ -26,6 +26,7 @@ lazy val specs2 = Seq(
     "org.specs2" %% "specs2-core"
   , "org.specs2" %% "specs2-matcher-extra"
   , "org.specs2" %% "specs2-scalacheck"
+  , "org.specs2" %% "specs2-cats"
   , "org.specs2" %% "specs2-html"
   , "org.specs2" %% "specs2-junit").map(_ % specs2Version % "test")
 

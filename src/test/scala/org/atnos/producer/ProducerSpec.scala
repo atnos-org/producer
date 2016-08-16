@@ -7,12 +7,12 @@ import org.atnos.producer.Producer._
 import org.scalacheck._
 import org.specs2._
 import org.specs2.matcher._
+import XorMatchers._
 import org.specs2.concurrent.ExecutionEnv
 
 import scala.concurrent.Future
 import cats.implicits._
-import cats.Eval
-import cats.data.Writer
+  import cats.data.Writer
 import transducers._
 import org.atnos.eff._
 import all._
@@ -65,19 +65,19 @@ class ProducerSpec(implicit ee: ExecutionEnv) extends Specification with ScalaCh
   }
 
   def foldable = prop { list: List[Int] =>
-    emit[S0, Int](list).evalToList ==== list
+    emit[S0, Int](list).safeToList ==== list
   }
 
   def effectFoldable = prop { list: List[Int] =>
-    type S = Fx.fx1[Eval]
+    type S = Fx.fx1[Safe]
 
     val messages = new ListBuffer[String]
-    val producer: Producer[S, Int] = emitEff[S, Int](delay { messages.append("input"); list })
-    val start = delay[S, Int] { messages.append("start"); 0 }
+    val producer: Producer[S, Int] = emitEff[S, Int](protect { messages.append("input"); list })
+    val start = protect[S, Int] { messages.append("start"); 0 }
     val f = (a: Int, b: Int) => { messages.append(s"adding $a and $b"); a + b }
-    val end = (s: Int) => delay[S, String] { messages.append("end"); s.toString }
+    val end = (s: Int) => protect[S, String] { messages.append("end"); s.toString }
 
-    val result = Producer.fold(producer)(start, f, end).runEval.run
+    val result = Producer.fold(producer)(start, f, end).execSafe.run.toOption.get
     result ==== list.foldLeft(0)(_ + _).toString
 
     messages.toList must contain(atLeast("start", "input", "end")).inOrder.when(list.nonEmpty)
@@ -98,11 +98,11 @@ class ProducerSpec(implicit ee: ExecutionEnv) extends Specification with ScalaCh
   }
 
   def repeat1 = prop { n: Int =>
-    collect(repeatValue[S, Int](1).take(n)).runEval.runWriterLog.run ==== List.fill(n)(1)
+    collect(repeatValue[S, Int](1).take(n)).runSafe.runWriterLog.run ==== List.fill(n)(1)
   }.setGen(Gen.choose(0, 10))
 
   def repeat2 = prop { n: Int =>
-    collect(repeat[S, Int](one(1)).take(n)).runEval.runWriterLog.run ==== List.fill(n)(1)
+    collect(repeat[S, Int](one(1)).take(n)).runSafe.runWriterLog.run ==== List.fill(n)(1)
   }.setGen(Gen.choose(0, 10))
 
   def slidingProducer = prop { (xs: List[Int], n: Int) =>
@@ -127,9 +127,9 @@ class ProducerSpec(implicit ee: ExecutionEnv) extends Specification with ScalaCh
   }.setGen(Gen.listOf(Gen.choose(1, 100)))
 
   def sequenceFutures = prop { xs: List[Int] =>
-    type SF = Fx.fx3[Writer[Int, ?], Eval, Future]
+    type SF = Fx.fx3[Writer[Int, ?], Safe, Future]
 
-    def doIt[R :_eval](implicit f: Future |= R): Producer[R, Int] =
+    def doIt[R :_safe](implicit f: Future |= R): Producer[R, Int] =
       sequence[R, Future, Int](4)(emit(xs.map(x => async(action(x)))))
 
     doIt[SF].runLog.detach must be_==(xs).await
@@ -140,15 +140,15 @@ class ProducerSpec(implicit ee: ExecutionEnv) extends Specification with ScalaCh
   }
 
   def producerInto = prop { xs: List[Int] =>
-    emit[Fx.fx1[Eval], Int](xs).into[Fx.fx2[WriterInt, Eval]].runLog === xs
+    emit[Fx.fx1[Safe], Int](xs).into[Fx.fx2[WriterInt, Safe]].runLog === xs
   }
 
   def finalAction = prop { xs: List[Int] =>
-    type S = Fx.fx2[Safe, Eval]
+    type S = Fx.fx2[Safe, Safe]
     val messages = new ListBuffer[String]
 
     val producer = emitEff[S, Int](protect(xs)).map(x => messages.append(x.toString)).andFinally(protect[S, Unit](messages.append("end")))
-    producer.to(folds.list.into[S]).runSafe.runEval
+    producer.to(folds.list.into[S]).runSafe.runSafe
 
     messages.toList ==== xs.toList.map(_.toString) :+ "end"
   }
@@ -162,31 +162,31 @@ class ProducerSpec(implicit ee: ExecutionEnv) extends Specification with ScalaCh
   type WriterString[A] = Writer[String, A]
   type WriterList[A]   = Writer[List[Int], A]
 
-  type S0 = Fx.fx1[Eval]
-  type S  = Fx.fx2[WriterInt, Eval]
-  type S1 = Fx.fx2[WriterString, Eval]
-  type SL = Fx.fx2[WriterList, Eval]
-  type SO = Fx.fx2[WriterOption, Eval]
+  type S0 = Fx.fx1[Safe]
+  type S  = Fx.fx2[WriterInt, Safe]
+  type S1 = Fx.fx2[WriterString, Safe]
+  type SL = Fx.fx2[WriterList, Safe]
+  type SO = Fx.fx2[WriterOption, Safe]
 
-  type ProducerInt          = Producer[Fx1[Eval], Int]
-  type ProducerString       = Producer[Fx1[Eval], String]
-  type ProducerWriterInt    = Producer[Fx.fx2[WriterInt, Eval], Int]
-  type ProducerWriterString = Producer[Fx.fx2[WriterString, Eval], String]
-  type ProducerWriterOption = Producer[Fx.fx2[WriterOption, Eval], Option[Int]]
+  type ProducerInt          = Producer[Fx1[Safe], Int]
+  type ProducerString       = Producer[Fx1[Safe], String]
+  type ProducerWriterInt    = Producer[Fx.fx2[WriterInt, Safe], Int]
+  type ProducerWriterString = Producer[Fx.fx2[WriterString, Safe], String]
+  type ProducerWriterOption = Producer[Fx.fx2[WriterOption, Safe], Option[Int]]
 
-  implicit class ProducerOperations[W](p: Producer[Fx2[Writer[W, ?], Eval], W]) {
+  implicit class ProducerOperations[W](p: Producer[Fx2[Writer[W, ?], Safe], W]) {
     def runLog: List[W] =
-      collect[Fx2[Writer[W, ?], Eval], W](p).runWriterLog.runEval.run
+      collect[Fx2[Writer[W, ?], Safe], W](p).runWriterLog.execSafe.run.toOption.get
   }
 
-  implicit class EffOperations[W](e: Eff[Fx2[Writer[W, ?], Eval], W]) {
+  implicit class EffOperations[W](e: Eff[Fx2[Writer[W, ?], Safe], W]) {
     def runLog: List[W] =
-      e.runWriterLog.runEval.run
+      e.runWriterLog.execSafe.run.toOption.get
   }
 
-  implicit class ProducerOperations2[W, U[_]](p: Producer[Fx3[Writer[W, ?], Eval, U], W]) {
+  implicit class ProducerOperations2[W, U[_]](p: Producer[Fx3[Writer[W, ?], Safe, U], W]) {
     def runLog =
-      collect[Fx3[Writer[W, ?], Eval, U], W](p).runWriterLog.runEval
+      collect[Fx3[Writer[W, ?], Safe, U], W](p).runWriterLog.execSafe.map(_.toOption.get)
   }
 
   def action(x: Int) = {
@@ -194,11 +194,11 @@ class ProducerSpec(implicit ee: ExecutionEnv) extends Specification with ScalaCh
     x
   }
 
-  def produceLike[W, A](expected: Producer[Fx.fx2[Writer[W, ?], Eval], W]): Matcher[Producer[Fx.fx2[Writer[W, ?], Eval], W]] =
-    (actual: Producer[Fx.fx2[Writer[W, ?], Eval], W]) => actual.runLog ==== expected.runLog
+  def produceLike[W, A](expected: Producer[Fx.fx2[Writer[W, ?], Safe], W]): Matcher[Producer[Fx.fx2[Writer[W, ?], Safe], W]] =
+    (actual: Producer[Fx.fx2[Writer[W, ?], Safe], W]) => actual.runLog ==== expected.runLog
 
-  def runLike[W, A](expected: Producer[Fx1[Eval], W]): Matcher[Producer[Fx1[Eval], W]] =
-    (actual: Producer[Fx1[Eval], W]) => actual.evalToList ==== expected.evalToList
+  def runLike[W, A](expected: Producer[Fx1[Safe], W]): Matcher[Producer[Fx1[Safe], W]] =
+    (actual: Producer[Fx1[Safe], W]) => actual.safeToList ==== expected.safeToList
 
   implicit def ArbitraryProducerInt: Arbitrary[ProducerInt] = Arbitrary {
     for {
@@ -211,39 +211,39 @@ class ProducerSpec(implicit ee: ExecutionEnv) extends Specification with ScalaCh
     for {
       n  <- Gen.choose(0, 10)
       xs <- Gen.listOfN(n, Gen.choose(1, 30))
-    } yield emit[Fx2[WriterInt, Eval], Int](xs)
+    } yield emit[Fx2[WriterInt, Safe], Int](xs)
   }
 
 
   implicit def ArbitraryKleisliString: Arbitrary[Int => ProducerString] = Arbitrary {
     Gen.oneOf(
-      (i: Int) => Producer.empty[Fx1[Eval], String],
-      (i: Int) => one[Fx1[Eval], String](i.toString),
-      (i: Int) => one[Fx1[Eval], String](i.toString) > one((i + 1).toString))
+      (i: Int) => Producer.empty[Fx1[Safe], String],
+      (i: Int) => one[Fx1[Safe], String](i.toString),
+      (i: Int) => one[Fx1[Safe], String](i.toString) > one((i + 1).toString))
   }
 
   implicit def ArbitraryKleisliIntString: Arbitrary[Int => ProducerWriterString] = Arbitrary {
     Gen.oneOf(
-      (i: Int) => Producer.empty[Fx.fx2[WriterString, Eval], String],
-      (i: Int) => one[Fx.fx2[WriterString, Eval], String](i.toString),
-      (i: Int) => one[Fx.fx2[WriterString, Eval], String](i.toString) > one((i + 1).toString))
+      (i: Int) => Producer.empty[Fx.fx2[WriterString, Safe], String],
+      (i: Int) => one[Fx.fx2[WriterString, Safe], String](i.toString),
+      (i: Int) => one[Fx.fx2[WriterString, Safe], String](i.toString) > one((i + 1).toString))
   }
 
   implicit def ArbitraryKleisliStringOptionInt: Arbitrary[String => ProducerWriterOption] = Arbitrary {
     Gen.oneOf(
-      (i: String) => Producer.empty[Fx.fx2[WriterOption, Eval], Option[Int]],
-      (i: String) => one[Fx.fx2[WriterOption, Eval], Option[Int]](None),
-      (i: String) => one[Fx.fx2[WriterOption, Eval], Option[Int]](Option(i.size)) > one(Option(i.size * 2)))
+      (i: String) => Producer.empty[Fx.fx2[WriterOption, Safe], Option[Int]],
+      (i: String) => one[Fx.fx2[WriterOption, Safe], Option[Int]](None),
+      (i: String) => one[Fx.fx2[WriterOption, Safe], Option[Int]](Option(i.size)) > one(Option(i.size * 2)))
   }
 
   implicit def ArbitraryKleisliOptionIntInt: Arbitrary[Option[Int] => ProducerWriterInt] = Arbitrary {
     Gen.oneOf(
-      (i: Option[Int]) => Producer.empty[Fx.fx2[WriterInt, Eval], Int],
-      (i: Option[Int]) => one[Fx.fx2[WriterInt, Eval], Int](i.getOrElse(-2)),
-      (i: Option[Int]) => one[Fx.fx2[WriterInt, Eval], Int](3) > one(i.map(_ + 1).getOrElse(0)))
+      (i: Option[Int]) => Producer.empty[Fx.fx2[WriterInt, Safe], Int],
+      (i: Option[Int]) => one[Fx.fx2[WriterInt, Safe], Int](i.getOrElse(-2)),
+      (i: Option[Int]) => one[Fx.fx2[WriterInt, Safe], Int](3) > one(i.map(_ + 1).getOrElse(0)))
   }
 
-  implicit class ProducerFolds[R :_eval, A](p: Producer[R, A]) {
+  implicit class ProducerFolds[R :_safe, A](p: Producer[R, A]) {
     def to[B](f: Fold[R, A, B]): Eff[R, B] =
       p.fold[B, f.S](f.start, f.fold, f.end)
 
@@ -251,9 +251,9 @@ class ProducerSpec(implicit ee: ExecutionEnv) extends Specification with ScalaCh
       producers.observe(p)(f.start, f.fold, f.end)
   }
 
-  implicit class ProducerOperations3[A](p: Producer[Fx1[Eval], A]) {
-    def evalToList =
-      p.runList.runEval.run
+  implicit class ProducerOperations3[A](p: Producer[Fx1[Safe], A]) {
+    def safeToList =
+    p.runList.execSafe.run.toOption.get
   }
 
 }

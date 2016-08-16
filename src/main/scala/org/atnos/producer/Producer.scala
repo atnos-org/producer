@@ -12,7 +12,7 @@ case class Done[R, A]() extends Stream[R, A]
 case class One[R, A](a: A) extends Stream[R, A]
 case class More[R, A](as: List[A], next: Producer[R, A]) extends Stream[R, A]
 
-case class Producer[R :_eval, A](run: Eff[R, Stream[R, A]]) {
+case class Producer[R :_safe, A](run: Eff[R, Stream[R, A]]) {
 
   def flatMap[B](f: A => Producer[R, B]): Producer[R, B] =
     cata[R, A, B](this)(
@@ -27,7 +27,7 @@ case class Producer[R :_eval, A](run: Eff[R, Stream[R, A]]) {
     Producer(run flatMap {
       case Done() => other.run
       case One(a) => pure(More(List(a), other))
-      case More(as, next) => delay(More(as, next append other))
+      case More(as, next) => protect(More(as, next append other))
     })
 
   def zip[B](other: Producer[R, B]): Producer[R, (A, B)] =
@@ -84,7 +84,7 @@ object Producer extends Producers {
     }
   }
 
-  implicit def ProducerMonad[R :_eval]: Monad[Producer[R, ?]] = new Monad[Producer[R, ?]] {
+  implicit def ProducerMonad[R :_safe]: Monad[Producer[R, ?]] = new Monad[Producer[R, ?]] {
     def flatMap[A, B](fa: Producer[R, A])(f: A => Producer[R, B]): Producer[R, B] =
       fa.flatMap(f)
 
@@ -95,55 +95,58 @@ object Producer extends Producers {
 }
 
 trait Producers {
-  def done[R :_eval, A]: Producer[R, A] =
+  def done[R :_safe, A]: Producer[R, A] =
     Producer[R, A](pure(Done()))
 
-  def one[R :_eval, A](a: A): Producer[R, A] =
+  def one[R :_safe, A](a: A): Producer[R, A] =
     Producer[R, A](pure(One(a)))
 
-  def oneOrMore[R :_eval, A](a: A, as: List[A]): Producer[R, A] =
+  def oneEff[R :_safe, A](e: Eff[R, A]): Producer[R, A] =
+    Producer[R, A](e.flatMap(a => one(a).run))
+
+  def oneOrMore[R :_safe, A](a: A, as: List[A]): Producer[R, A] =
     Producer[R, A](pure(More(a +: as, done)))
 
-  def repeat[R :_eval, A](p: Producer[R, A]): Producer[R, A] =
+  def repeat[R :_safe, A](p: Producer[R, A]): Producer[R, A] =
     Producer(p.run flatMap {
       case Done() => pure(Done())
-      case One(a) => delay(More(List(a), repeat(p)))
-      case More(as, next) => delay(More(as, next append repeat(p)))
+      case One(a) => protect(More(List(a), repeat(p)))
+      case More(as, next) => protect(More(as, next append repeat(p)))
     })
 
-  def repeatValue[R :_eval, A](a: A): Producer[R, A] =
-    Producer(delay(More(List(a), repeatValue(a))))
+  def repeatValue[R :_safe, A](a: A): Producer[R, A] =
+    Producer(protect(More(List(a), repeatValue(a))))
 
-  def repeatEval[R :_eval, A](e: Eff[R, A]): Producer[R, A] =
+  def repeatEval[R :_safe, A](e: Eff[R, A]): Producer[R, A] =
     emitEff(e.map(List(_))) append repeatEval(e)
 
-  def fill[R :_eval, A](n: Int)(p: Producer[R, A]): Producer[R, A] =
+  def fill[R :_safe, A](n: Int)(p: Producer[R, A]): Producer[R, A] =
     if (n <= 0) done[R, A]
     else p append fill(n - 1)(p)
 
-  def emit[R :_eval, A](elements: List[A]): Producer[R, A] =
+  def emit[R :_safe, A](elements: List[A]): Producer[R, A] =
     elements match {
       case Nil      => done[R, A]
       case a :: Nil => one[R, A](a)
       case a :: as  => oneOrMore(a, as)
     }
 
-  def eval[R :_eval, A](a: Eff[R, A]): Producer[R, A] =
+  def eval[R :_safe, A](a: Eff[R, A]): Producer[R, A] =
     Producer(a.map(One(_)))
 
-  def emitEff[R :_eval, A](elements: Eff[R, List[A]]): Producer[R, A] =
+  def emitEff[R :_safe, A](elements: Eff[R, List[A]]): Producer[R, A] =
     Producer(elements flatMap {
       case Nil      => done[R, A].run
       case a :: Nil => one(a).run
       case a :: as  => oneOrMore(a, as).run
     })
 
-  def fold[R :_eval, A, B, S](producer: Producer[R, A])(start: Eff[R, S], f: (S, A) => S, end: S => Eff[R, B]): Eff[R, B] =
+  def fold[R :_safe, A, B, S](producer: Producer[R, A])(start: Eff[R, S], f: (S, A) => S, end: S => Eff[R, B]): Eff[R, B] =
     start.flatMap { init =>
       def go(p: Producer[R, A], s: S): Eff[R, S] =
         p.run flatMap {
           case Done() => pure[R, S](s)
-          case One(a) => delay[R, S](f(s, a))
+          case One(a) => protect[R, S](f(s, a))
           case More(as, next) =>
             val newS = as.foldLeft(s)(f)
             go(next, newS)
@@ -152,7 +155,7 @@ trait Producers {
       go(producer, init)
     } flatMap end
 
-  def observe[R :_eval, A, S](producer: Producer[R, A])(start: Eff[R, S], f: (S, A) => S, end: S => Eff[R, Unit]): Producer[R, A] =
+  def observe[R :_safe, A, S](producer: Producer[R, A])(start: Eff[R, S], f: (S, A) => S, end: S => Eff[R, Unit]): Producer[R, A] =
     Producer[R, A](start flatMap { init =>
       def go(p: Producer[R, A], s: S): Producer[R, A] =
         Producer[R, A] {
@@ -168,40 +171,40 @@ trait Producers {
       go(producer, init).run
     })
 
-  def runLast[R :_eval, A](producer: Producer[R, A]): Eff[R, Option[A]] =
+  def runLast[R :_safe, A](producer: Producer[R, A]): Eff[R, Option[A]] =
     producer.run flatMap {
       case Done() => pure[R, Option[A]](None)
       case One(a) => pure[R, Option[A]](Option(a))
       case More(as, next) => runLast(next).map(_.orElse(as.lastOption))
     }
 
-  def runList[R :_eval, A](producer: Producer[R, A]): Eff[R, List[A]] =
+  def runList[R :_safe, A](producer: Producer[R, A]): Eff[R, List[A]] =
     producer.fold(pure(Vector[A]()), (vs: Vector[A], a: A) => vs :+ a, (vs:Vector[A]) => pure(vs.toList))
 
-  def collect[R :_eval, A](producer: Producer[R, A])(implicit m: Member[Writer[A, ?], R]): Eff[R, Unit] =
+  def collect[R :_safe, A](producer: Producer[R, A])(implicit m: Member[Writer[A, ?], R]): Eff[R, Unit] =
     producer.run flatMap {
       case Done() => pure(())
       case One(a) => tell(a)
       case More(as, next) => as.traverse(tell[R, A]) >> collect(next)
     }
 
-  def into[R, U, A](producer: Producer[R, A])(implicit intoPoly: IntoPoly[R, U], eval: Eval |= U): Producer[U, A] =
+  def into[R, U, A](producer: Producer[R, A])(implicit intoPoly: IntoPoly[R, U], s: Safe |= U): Producer[U, A] =
     Producer(producer.run.into[U] flatMap {
       case Done() => done[U, A].run
       case One(a) => one[U, A](a).run
-      case More(as, next) => delay(More[U, A](as, into(next)))
+      case More(as, next) => protect(More[U, A](as, into(next)))
     })
 
-  def empty[R :_eval, A]: Producer[R, A] =
+  def empty[R :_safe, A]: Producer[R, A] =
     done
 
   def pipe[R, A, B](p: Producer[R, A], t: Transducer[R, A, B]): Producer[R, B] =
     t(p)
 
-  def filter[R :_eval, A](producer: Producer[R, A])(f: A => Boolean): Producer[R, A] =
+  def filter[R :_safe, A](producer: Producer[R, A])(f: A => Boolean): Producer[R, A] =
     Producer(producer.run flatMap {
       case Done() => done.run
-      case One(a) => (if (f(a)) one[R, A](a) else done[R, A]).run
+      case One(a) => protect[R, A](a).as(if (f(a)) One(a) else Done())
       case More(as, next) =>
         as filter f match {
           case Nil => next.filter(f).run
@@ -209,21 +212,21 @@ trait Producers {
         }
     })
 
-  def flatten[R :_eval, A](producer: Producer[R, Producer[R, A]]): Producer[R, A] =
+  def flatten[R :_safe, A](producer: Producer[R, Producer[R, A]]): Producer[R, A] =
     Producer(producer.run flatMap {
       case Done() => done.run
       case One(p) => p.run
       case More(ps, next) => (flattenProducers(ps) append flatten(next)).run
     })
 
-  def flattenProducers[R :_eval, A](producers: List[Producer[R, A]]): Producer[R, A] =
+  def flattenProducers[R :_safe, A](producers: List[Producer[R, A]]): Producer[R, A] =
     producers match {
       case Nil => done
       case p :: rest => p append flattenProducers(rest)
     }
 
   /** accumulate chunks of size n inside More nodes */
-  def chunk[R :_eval, A](size: Int)(producer: Producer[R, A]): Producer[R, A] = {
+  def chunk[R :_safe, A](size: Int)(producer: Producer[R, A]): Producer[R, A] = {
     def go(p: Producer[R, A], elements: Vector[A]): Producer[R, A] =
       Producer[R, A](
         p.run flatMap {
@@ -239,7 +242,7 @@ trait Producers {
     go(producer, Vector.empty)
   }
 
-  def sliding[R :_eval, A](size: Int)(producer: Producer[R, A]): Producer[R, List[A]] = {
+  def sliding[R :_safe, A](size: Int)(producer: Producer[R, A]): Producer[R, List[A]] = {
 
     def go(p: Producer[R, A], elements: Vector[A]): Producer[R, List[A]] =
       Producer[R, List[A]](
@@ -256,20 +259,20 @@ trait Producers {
     go(producer, Vector.empty)
   }
 
-  def peek[R :_eval, A](producer: Producer[R, A]): Eff[R, (Option[A], Producer[R, A])] =
+  def peek[R :_safe, A](producer: Producer[R, A]): Eff[R, (Option[A], Producer[R, A])] =
     producer.run map {
       case Done() => (None, done[R, A])
       case One(a) => (Option(a), done[R, A])
       case More(as, next) => (as.headOption, emit(as.tail) append next)
     }
 
-  def flattenList[R :_eval, A](producer: Producer[R, List[A]]): Producer[R, A] =
+  def flattenList[R :_safe, A](producer: Producer[R, List[A]]): Producer[R, A] =
     producer.flatMap(emit[R, A])
 
-  def sequence[R :_eval, F[_], A](n: Int)(producer: Producer[R, Eff[R, A]])(implicit f: F |= R) =
+  def sequence[R :_safe, F[_], A](n: Int)(producer: Producer[R, Eff[R, A]])(implicit f: F |= R) =
     sliding(n)(producer).flatMap { actions => emitEff(Eff.sequenceA(actions)) }
 
-  private[producer] def cata[R :_eval, A, B](producer: Producer[R, A])(onDone: Producer[R, B], onOne: A => Producer[R, B], onMore: (List[A], Producer[R, A]) => Producer[R, B]): Producer[R, B] =
+  private[producer] def cata[R :_safe, A, B](producer: Producer[R, A])(onDone: Producer[R, B], onOne: A => Producer[R, B], onMore: (List[A], Producer[R, A]) => Producer[R, B]): Producer[R, B] =
     Producer[R, B](producer.run.flatMap {
       case Done() => onDone.run
       case One(a) => onOne(a).run
@@ -280,25 +283,25 @@ trait Producers {
 
 
 trait Transducers {
-  def filter[R :_eval, A, B](f: A => Boolean): Transducer[R, A, A] =
+  def filter[R :_safe, A, B](f: A => Boolean): Transducer[R, A, A] =
     (p: Producer[R, A]) => Producer.filter(p)(f)
 
-  def receive[R :_eval, A, B](f: A => Producer[R, B]): Transducer[R, A, B] =
+  def receive[R :_safe, A, B](f: A => Producer[R, B]): Transducer[R, A, B] =
     (p: Producer[R, A]) => p.flatMap(f)
 
-  def transducer[R :_eval, A, B](f: A => B): Transducer[R, A, B] =
+  def transducer[R :_safe, A, B](f: A => B): Transducer[R, A, B] =
     (p: Producer[R, A]) => p.map(f)
 
-  def receiveOr[R :_eval, A, B](f: A => Producer[R, B])(or: =>Producer[R, B]): Transducer[R, A, B] =
+  def receiveOr[R :_safe, A, B](f: A => Producer[R, B])(or: =>Producer[R, B]): Transducer[R, A, B] =
     cata_[R, A, B](
       or,
       (a: A) => f(a),
       (as: List[A], next: Producer[R, A]) => as.headOption.map(f).getOrElse(or))
 
-  def receiveOption[R :_eval, A, B]: Transducer[R, A, Option[A]] =
+  def receiveOption[R :_safe, A, B]: Transducer[R, A, Option[A]] =
     receiveOr[R, A, Option[A]]((a: A) => one(Option(a)))(one(None))
 
-  def drop[R :_eval, A](n: Int): Transducer[R, A, A] =
+  def drop[R :_safe, A](n: Int): Transducer[R, A, A] =
     cata_[R, A, A](
       done[R, A],
       (a: A) => if (n <= 0) one(a) else done,
@@ -306,7 +309,7 @@ trait Transducers {
         if (n < as.size) emit(as.drop(n)) append next
         else next |> drop(n - as.size))
 
-  def dropRight[R :_eval, A](n: Int): Transducer[R, A, A] =
+  def dropRight[R :_safe, A](n: Int): Transducer[R, A, A] =
     (producer: Producer[R, A]) => {
        def go(p: Producer[R, A], elements: Vector[A]): Producer[R, A] =
          Producer(peek(p).flatMap {
@@ -323,7 +326,7 @@ trait Transducers {
       go(producer, Vector.empty[A])
     }
 
-  def take[R :_eval, A](n: Int): Transducer[R, A, A] =
+  def take[R :_safe, A](n: Int): Transducer[R, A, A] =
     cata_[R, A, A](
       done[R, A],
       (a: A) => if (n <= 0) done else one(a),
@@ -331,7 +334,7 @@ trait Transducers {
         if (n <= as.size) emit(as.take(n))
         else emit(as) append (next |> take(n - as.size)))
 
-  def takeWhile[R :_eval, A](f: A => Boolean): Transducer[R, A, A] =
+  def takeWhile[R :_safe, A](f: A => Boolean): Transducer[R, A, A] =
     cata_[R, A, A](
       done[R, A],
       (a: A) => if (f(a)) one(a) else done,
@@ -341,7 +344,7 @@ trait Transducers {
           case some => emit(some) append next.takeWhile(f)
         })
 
-  def zipWithPrevious[R :_eval, A]: Transducer[R, A, (Option[A], A)] =
+  def zipWithPrevious[R :_safe, A]: Transducer[R, A, (Option[A], A)] =
     (producer: Producer[R, A]) => {
       def go(p: Producer[R, A], previous: Option[A]): Producer[R, (Option[A], A)] =
         Producer(peek(p) flatMap {
@@ -352,7 +355,7 @@ trait Transducers {
       go(producer, None)
     }
 
-  def zipWithNext[R :_eval, A]: Transducer[R, A, (A, Option[A])] =
+  def zipWithNext[R :_safe, A]: Transducer[R, A, (A, Option[A])] =
     (producer: Producer[R, A]) => {
       def go(p: Producer[R, A], previous: A): Producer[R, (A, Option[A])] =
         Producer(peek(p) flatMap {
@@ -365,15 +368,15 @@ trait Transducers {
       })
     }
 
-  def zipWithPreviousAndNext[R :_eval, A]: Transducer[R, A, (Option[A], A, Option[A])] =
+  def zipWithPreviousAndNext[R :_safe, A]: Transducer[R, A, (Option[A], A, Option[A])] =
     (p: Producer[R, A]) =>
       ((p |> zipWithPrevious) zip (p |> zipWithNext)).map { case ((prev, a), (_, next)) => (prev, a, next) }
 
 
-  def zipWithIndex[R :_eval, A]: Transducer[R, A, (A, Int)] =
+  def zipWithIndex[R :_safe, A]: Transducer[R, A, (A, Int)] =
     zipWithState[R, A, Int](0)((_, n: Int) => n + 1)
 
-  def zipWithState[R :_eval, A, B](b: B)(f: (A, B) => B): Transducer[R, A, (A, B)] =
+  def zipWithState[R :_safe, A, B](b: B)(f: (A, B) => B): Transducer[R, A, (A, B)] =
     (producer: Producer[R, A]) => {
       def go(p: Producer[R, A], state: B): Producer[R, (A, B)] =
         Producer[R, (A, B)] {
@@ -398,7 +401,7 @@ trait Transducers {
         go(producer, b)
     }
 
-  def intersperse[R :_eval, A](in: A): Transducer[R, A, A] =
+  def intersperse[R :_safe, A](in: A): Transducer[R, A, A] =
     (producer: Producer[R, A]) =>
       Producer[R, A](
         producer.run flatMap {
@@ -416,7 +419,7 @@ trait Transducers {
         })
 
 
-  private def cata_[R :_eval, A, B](onDone: Producer[R, B], onOne: A => Producer[R, B], onMore: (List[A], Producer[R, A]) => Producer[R, B]): Transducer[R, A, B] =
+  private def cata_[R :_safe, A, B](onDone: Producer[R, B], onOne: A => Producer[R, B], onMore: (List[A], Producer[R, A]) => Producer[R, B]): Transducer[R, A, B] =
     (producer: Producer[R, A]) => cata(producer)(onDone, onOne, onMore)
 }
 
