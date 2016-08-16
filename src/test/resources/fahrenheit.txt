@@ -1,0 +1,11 @@
+// conversions between fahrenheit and celsius
+356	 180 Moderate Oven
+212	 100 Water boils
+104	 40  Hot Bath
+98.6 37	 Body temperature
+86	 30	 Beach weather
+70	 21	 Room temperature
+50	 10	 Cool Day
+32	 0	 Freezing point of water
+0   −18	 Very Cold Day
+//~40 -40  Extremely Cold Day

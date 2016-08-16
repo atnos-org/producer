@@ -14,7 +14,11 @@ import cats.implicits._
 import cats.Eval
 import cats.data.Writer
 import transducers._
-import org.atnos.eff._, all._, syntax.all._
+import org.atnos.eff._
+import all._
+import org.atnos.origami._
+import org.atnos.origami.folds._
+import syntax.all._
 
 import scala.collection.mutable.ListBuffer
 
@@ -37,39 +41,31 @@ class ProducerSpec(implicit ee: ExecutionEnv) extends Specification with ScalaCh
   map                        $map1
   sequence futures           $sequenceFutures
 
-  a producer can be followed by another one  $followed
-  a producer can be modified by a transducer $transduced
-  a producer can be modified by a receiver   $received
-  a receiver can run another producer if the first one is empty  $receivedOr
-
+  a producer can be followed by another one               $followed
   a producer can be injected into a larger set of effects $producerInto
 
-  take(n) $takeN
-  take(n) + exception $takeException
+  a producer can ensure resource safety
+    it is possible to register an action which will only be executed when the producer has finished running $finalAction
 
-  zipWithPrevious        $zipWithPreviousElement
-  zipWithNext            $zipWithNextElement
-  zipWithPreviousAndNext $zipWithPreviousAndNextElement
-  zipWithIndex           $zipWithIndex1
 """
 
   def monoid = prop { (p1: ProducerWriterInt, p2: ProducerWriterInt, p3: ProducerWriterInt) =>
-    Producer.empty > p1 must produceLike(p1 > Producer.empty)
+    Producer.empty[S, Int] > p1 must produceLike(p1 > Producer.empty)
     p1 > (p2 > p3) must produceLike((p1 > p2) > p3)
   }
 
   def monad = prop { (a: Int, f: Int => ProducerWriterString, g: String => ProducerWriterOption, h: Option[Int] => ProducerWriterInt) =>
-    (one(a) flatMap f) must produceLike(f(a))
-    (f(a) flatMap one) must produceLike(f(a))
+    (one[S1, Int](a) flatMap f) must produceLike(f(a))
+    (f(a) flatMap one[S1, String]) must produceLike(f(a))
   }
 
   def listMonad = prop { (f: Int => ProducerString, p1: ProducerInt, p2: ProducerInt) =>
-    (Producer.empty[NoFx, Int] flatMap f) must runLike(Producer.empty[NoFx, String])
+    (Producer.empty[S0, Int] flatMap f) must runLike(Producer.empty[S0, String])
     (p1 > p2).flatMap(f) must runLike((p1 flatMap f) > (p2 flatMap f))
   }
 
   def foldable = prop { list: List[Int] =>
-    emit[NoFx, Int](list).toList ==== list
+    emit[S0, Int](list).evalToList ==== list
   }
 
   def effectFoldable = prop { list: List[Int] =>
@@ -81,7 +77,7 @@ class ProducerSpec(implicit ee: ExecutionEnv) extends Specification with ScalaCh
     val f = (a: Int, b: Int) => { messages.append(s"adding $a and $b"); a + b }
     val end = (s: Int) => delay[S, String] { messages.append("end"); s.toString }
 
-    val result = fold(producer)(start, f, end).runEval.run
+    val result = Producer.fold(producer)(start, f, end).runEval.run
     result ==== list.foldLeft(0)(_ + _).toString
 
     messages.toList must contain(atLeast("start", "input", "end")).inOrder.when(list.nonEmpty)
@@ -102,11 +98,11 @@ class ProducerSpec(implicit ee: ExecutionEnv) extends Specification with ScalaCh
   }
 
   def repeat1 = prop { n: Int =>
-    collect(repeatValue[Fx.prepend[Eval, S], Int](1).take(n)).runEval.runWriterLog.run ==== List.fill(n)(1)
+    collect(repeatValue[S, Int](1).take(n)).runEval.runWriterLog.run ==== List.fill(n)(1)
   }.setGen(Gen.choose(0, 10))
 
   def repeat2 = prop { n: Int =>
-    collect(repeat[Fx.prepend[Eval, S], Int](one(1)).take(n)).runEval.runWriterLog.run ==== List.fill(n)(1)
+    collect(repeat[S, Int](one(1)).take(n)).runEval.runWriterLog.run ==== List.fill(n)(1)
   }.setGen(Gen.choose(0, 10))
 
   def slidingProducer = prop { (xs: List[Int], n: Int) =>
@@ -131,9 +127,9 @@ class ProducerSpec(implicit ee: ExecutionEnv) extends Specification with ScalaCh
   }.setGen(Gen.listOf(Gen.choose(1, 100)))
 
   def sequenceFutures = prop { xs: List[Int] =>
-    type SF = Fx.fx2[Writer[Int, ?], Future]
+    type SF = Fx.fx3[Writer[Int, ?], Eval, Future]
 
-    def doIt[R](implicit f: Future |= R): Producer[R, Int] =
+    def doIt[R :_eval](implicit f: Future |= R): Producer[R, Int] =
       sequence[R, Future, Int](4)(emit(xs.map(x => async(action(x)))))
 
     doIt[SF].runLog.detach must be_==(xs).await
@@ -143,65 +139,18 @@ class ProducerSpec(implicit ee: ExecutionEnv) extends Specification with ScalaCh
     (emit[S, Int](xs1) > emit(xs2)).runLog ==== xs1 ++ xs2
   }
 
-  def transduced = prop { xs: List[Int] =>
-    val f = (x: Int) => (x+ 1).toString
-
-    (emit[S1, Int](xs) |> transducer(f)).runLog ==== xs.map(f)
-  }.setGen(Gen.listOf(Gen.choose(1, 100)))
-
-  def received = prop { xs: List[Int] =>
-    val f = (x: Int) => (x+ 1).toString
-
-    def plusOne[R] =
-      receive[R, Int, String](a => one(f(a)))
-
-    (emit[S1, Int](xs) |> plusOne).runLog ==== xs.map(f)
-  }.setGen(Gen.listOf(Gen.choose(1, 100)))
-
-  def receivedOr = prop { xs: List[Int] =>
-    val f = (x: Int) => (x+ 1).toString
-
-    def plusOne[R] =
-      receiveOr[R, Int, String](a => one(f(a)))(emit(List("1", "2", "3")))
-
-    (Producer.done[S1, Int] |> plusOne).runLog ==== List("1", "2", "3")
-  }.setGen(Gen.listOf(Gen.choose(1, 100)))
-
-  def receivedOption = prop { xs: List[Int] =>
-    (emit[SO, Int](xs) |> receiveOption).runLog ==== xs.map(Option(_)) ++ List(None)
-  }.setGen(Gen.listOf(Gen.choose(1, 100)))
-
   def producerInto = prop { xs: List[Int] =>
-    emit[Fx.fx1[Eval], Int](xs).into[Fx.fx2[WriterInt, Eval]].runLog.runEval.run === xs
+    emit[Fx.fx1[Eval], Int](xs).into[Fx.fx2[WriterInt, Eval]].runLog === xs
   }
 
-  def takeN = prop { (xs: List[Int], n: Int) =>
-    (emit[S, Int](xs) |> take(n)).runLog ==== xs.take(n)
-  }.setGen2(Gen.choose(0, 10))
+  def finalAction = prop { xs: List[Int] =>
+    type S = Fx.fx2[Safe, Eval]
+    val messages = new ListBuffer[String]
 
-  def takeException = prop { n: Int =>
-    type R = Fx.fx2[WriterInt, Eval]
+    val producer = emitEff[S, Int](protect(xs)).map(x => messages.append(x.toString)).andFinally(protect[S, Unit](messages.append("end")))
+    producer.to(folds.list.into[S]).runSafe.runEval
 
-    val producer = emit[R, Int](List(1)) append emitEff[R, Int](delay { throw new Exception("boom"); List(1) })
-    (producer |> take(1)).runLog.runEval.run ==== List(1)
-  }
-
-  def zipWithNextElement = prop { xs: List[Int] =>
-    (emit[NoFx, Int](xs) |> zipWithNext).toList ==== (xs zip (xs.drop(1).map(Option(_)) :+ None))
-  }
-
-  def zipWithPreviousElement = prop { xs: List[Int] =>
-    (emit[NoFx, Int](xs) |> zipWithPrevious).toList ==== ((None +: xs.dropRight(1).map(Option(_))) zip xs)
-  }
-
-  def zipWithPreviousAndNextElement = prop { xs: List[Int] =>
-    val ls = emit[NoFx, Int](xs)
-    (ls |> zipWithPreviousAndNext).toList ====
-    (ls |> zipWithPrevious).zip(ls |> zipWithNext).map { case ((previous, a), (_, next)) => (previous, a, next) }.toList
-  }
-
-  def zipWithIndex1 = prop { xs: List[Int] =>
-    emit[NoFx, Int](xs).zipWithIndex.toList ==== xs.zipWithIndex
+    messages.toList ==== xs.toList.map(_.toString) :+ "end"
   }
 
   /**
@@ -213,30 +162,31 @@ class ProducerSpec(implicit ee: ExecutionEnv) extends Specification with ScalaCh
   type WriterString[A] = Writer[String, A]
   type WriterList[A]   = Writer[List[Int], A]
 
-  type S = Fx.fx1[WriterInt]
-  type S1 = Fx.fx1[WriterString]
-  type SL = Fx.fx1[WriterList]
-  type SO = Fx.fx1[WriterOption]
+  type S0 = Fx.fx1[Eval]
+  type S  = Fx.fx2[WriterInt, Eval]
+  type S1 = Fx.fx2[WriterString, Eval]
+  type SL = Fx.fx2[WriterList, Eval]
+  type SO = Fx.fx2[WriterOption, Eval]
 
-  type ProducerInt          = Producer[NoFx, Int]
-  type ProducerString       = Producer[NoFx, String]
-  type ProducerWriterInt    = Producer[Fx.fx1[WriterInt], Int]
-  type ProducerWriterString = Producer[Fx.fx1[WriterString], String]
-  type ProducerWriterOption = Producer[Fx.fx1[WriterOption], Option[Int]]
+  type ProducerInt          = Producer[Fx1[Eval], Int]
+  type ProducerString       = Producer[Fx1[Eval], String]
+  type ProducerWriterInt    = Producer[Fx.fx2[WriterInt, Eval], Int]
+  type ProducerWriterString = Producer[Fx.fx2[WriterString, Eval], String]
+  type ProducerWriterOption = Producer[Fx.fx2[WriterOption, Eval], Option[Int]]
 
-  implicit class ProducerOperations[W](p: Producer[Fx1[Writer[W, ?]], W]) {
+  implicit class ProducerOperations[W](p: Producer[Fx2[Writer[W, ?], Eval], W]) {
     def runLog: List[W] =
-      collect[Fx1[Writer[W, ?]], W](p).runWriterLog.run
+      collect[Fx2[Writer[W, ?], Eval], W](p).runWriterLog.runEval.run
   }
 
-  implicit class EffOperations[W](e: Eff[Fx1[Writer[W, ?]], W]) {
+  implicit class EffOperations[W](e: Eff[Fx2[Writer[W, ?], Eval], W]) {
     def runLog: List[W] =
-      e.runWriterLog.run
+      e.runWriterLog.runEval.run
   }
 
-  implicit class ProducerOperations2[W, U[_]](p: Producer[Fx2[Writer[W, ?], U], W]) {
+  implicit class ProducerOperations2[W, U[_]](p: Producer[Fx3[Writer[W, ?], Eval, U], W]) {
     def runLog =
-      collect[Fx2[Writer[W, ?], U], W](p).runWriterLog
+      collect[Fx3[Writer[W, ?], Eval, U], W](p).runWriterLog.runEval
   }
 
   def action(x: Int) = {
@@ -244,53 +194,67 @@ class ProducerSpec(implicit ee: ExecutionEnv) extends Specification with ScalaCh
     x
   }
 
-  def produceLike[W, A](expected: Producer[Fx.fx1[Writer[W, ?]], W]): Matcher[Producer[Fx.fx1[Writer[W, ?]], W]] =
-    (actual: Producer[Fx.fx1[Writer[W, ?]], W]) => actual.runLog ==== expected.runLog
+  def produceLike[W, A](expected: Producer[Fx.fx2[Writer[W, ?], Eval], W]): Matcher[Producer[Fx.fx2[Writer[W, ?], Eval], W]] =
+    (actual: Producer[Fx.fx2[Writer[W, ?], Eval], W]) => actual.runLog ==== expected.runLog
 
-  def runLike[W, A](expected: Producer[NoFx, W]): Matcher[Producer[NoFx, W]] =
-    (actual: Producer[NoFx, W]) => actual.toList ==== expected.toList
+  def runLike[W, A](expected: Producer[Fx1[Eval], W]): Matcher[Producer[Fx1[Eval], W]] =
+    (actual: Producer[Fx1[Eval], W]) => actual.evalToList ==== expected.evalToList
 
   implicit def ArbitraryProducerInt: Arbitrary[ProducerInt] = Arbitrary {
     for {
       n  <- Gen.choose(0, 10)
       xs <- Gen.listOfN(n, Gen.choose(1, 30))
-    } yield emit[NoFx, Int](xs)
+    } yield emit[S0, Int](xs)
   }
 
   implicit def ArbitraryProducerWriterInt: Arbitrary[ProducerWriterInt] = Arbitrary {
     for {
       n  <- Gen.choose(0, 10)
       xs <- Gen.listOfN(n, Gen.choose(1, 30))
-    } yield emit[Fx1[WriterInt], Int](xs)
+    } yield emit[Fx2[WriterInt, Eval], Int](xs)
   }
 
 
   implicit def ArbitraryKleisliString: Arbitrary[Int => ProducerString] = Arbitrary {
     Gen.oneOf(
-      (i: Int) => Producer.empty[NoFx, String],
-      (i: Int) => one[NoFx, String](i.toString),
-      (i: Int) => one[NoFx, String](i.toString) > one((i + 1).toString))
+      (i: Int) => Producer.empty[Fx1[Eval], String],
+      (i: Int) => one[Fx1[Eval], String](i.toString),
+      (i: Int) => one[Fx1[Eval], String](i.toString) > one((i + 1).toString))
   }
 
   implicit def ArbitraryKleisliIntString: Arbitrary[Int => ProducerWriterString] = Arbitrary {
     Gen.oneOf(
-      (i: Int) => Producer.empty[Fx.fx1[WriterString], String],
-      (i: Int) => one[Fx.fx1[WriterString], String](i.toString),
-      (i: Int) => one[Fx.fx1[WriterString], String](i.toString) > one((i + 1).toString))
+      (i: Int) => Producer.empty[Fx.fx2[WriterString, Eval], String],
+      (i: Int) => one[Fx.fx2[WriterString, Eval], String](i.toString),
+      (i: Int) => one[Fx.fx2[WriterString, Eval], String](i.toString) > one((i + 1).toString))
   }
 
   implicit def ArbitraryKleisliStringOptionInt: Arbitrary[String => ProducerWriterOption] = Arbitrary {
     Gen.oneOf(
-      (i: String) => Producer.empty[Fx.fx1[WriterOption], Option[Int]],
-      (i: String) => one[Fx.fx1[WriterOption], Option[Int]](None),
-      (i: String) => one[Fx.fx1[WriterOption], Option[Int]](Option(i.size)) > one(Option(i.size * 2)))
+      (i: String) => Producer.empty[Fx.fx2[WriterOption, Eval], Option[Int]],
+      (i: String) => one[Fx.fx2[WriterOption, Eval], Option[Int]](None),
+      (i: String) => one[Fx.fx2[WriterOption, Eval], Option[Int]](Option(i.size)) > one(Option(i.size * 2)))
   }
 
   implicit def ArbitraryKleisliOptionIntInt: Arbitrary[Option[Int] => ProducerWriterInt] = Arbitrary {
     Gen.oneOf(
-      (i: Option[Int]) => Producer.empty[Fx.fx1[WriterInt], Int],
-      (i: Option[Int]) => one[Fx.fx1[WriterInt], Int](i.getOrElse(-2)),
-      (i: Option[Int]) => one[Fx.fx1[WriterInt], Int](3) > one(i.map(_ + 1).getOrElse(0)))
+      (i: Option[Int]) => Producer.empty[Fx.fx2[WriterInt, Eval], Int],
+      (i: Option[Int]) => one[Fx.fx2[WriterInt, Eval], Int](i.getOrElse(-2)),
+      (i: Option[Int]) => one[Fx.fx2[WriterInt, Eval], Int](3) > one(i.map(_ + 1).getOrElse(0)))
   }
+
+  implicit class ProducerFolds[R :_eval, A](p: Producer[R, A]) {
+    def to[B](f: Fold[R, A, B]): Eff[R, B] =
+      p.fold[B, f.S](f.start, f.fold, f.end)
+
+    def observe(f: Fold[R, A, Unit]): Producer[R, A] =
+      producers.observe(p)(f.start, f.fold, f.end)
+  }
+
+  implicit class ProducerOperations3[A](p: Producer[Fx1[Eval], A]) {
+    def evalToList =
+      p.runList.runEval.run
+  }
+
 }
 
