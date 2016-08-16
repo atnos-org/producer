@@ -26,7 +26,7 @@ case class Producer[R :_eval, A](run: Eff[R, Stream[R, A]]) {
   def append(other: =>Producer[R, A]): Producer[R, A] =
     Producer(run flatMap {
       case Done() => other.run
-      case One(a) => delay(More(List(a), other))
+      case One(a) => pure(More(List(a), other))
       case More(as, next) => delay(More(as, next append other))
     })
 
@@ -96,17 +96,17 @@ object Producer extends Producers {
 
 trait Producers {
   def done[R :_eval, A]: Producer[R, A] =
-    Producer[R, A](delay(Done()))
+    Producer[R, A](pure(Done()))
 
   def one[R :_eval, A](a: A): Producer[R, A] =
-    Producer[R, A](delay(One(a)))
+    Producer[R, A](pure(One(a)))
 
   def oneOrMore[R :_eval, A](a: A, as: List[A]): Producer[R, A] =
-    Producer[R, A](delay(More(a +: as, done)))
+    Producer[R, A](pure(More(a +: as, done)))
 
   def repeat[R :_eval, A](p: Producer[R, A]): Producer[R, A] =
     Producer(p.run flatMap {
-      case Done() => delay(Done())
+      case Done() => pure(Done())
       case One(a) => delay(More(List(a), repeat(p)))
       case More(as, next) => delay(More(as, next append repeat(p)))
     })
@@ -142,7 +142,7 @@ trait Producers {
     start.flatMap { init =>
       def go(p: Producer[R, A], s: S): Eff[R, S] =
         p.run flatMap {
-          case Done() => delay[R, S](s)
+          case Done() => pure[R, S](s)
           case One(a) => delay[R, S](f(s, a))
           case More(as, next) =>
             val newS = as.foldLeft(s)(f)
@@ -170,17 +170,17 @@ trait Producers {
 
   def runLast[R :_eval, A](producer: Producer[R, A]): Eff[R, Option[A]] =
     producer.run flatMap {
-      case Done() => delay[R, Option[A]](None)
-      case One(a) => delay[R, Option[A]](Option(a))
+      case Done() => pure[R, Option[A]](None)
+      case One(a) => pure[R, Option[A]](Option(a))
       case More(as, next) => runLast(next).map(_.orElse(as.lastOption))
     }
 
   def runList[R :_eval, A](producer: Producer[R, A]): Eff[R, List[A]] =
-    producer.fold(delay(Vector[A]()), (vs: Vector[A], a: A) => vs :+ a, (vs:Vector[A]) => delay(vs.toList))
+    producer.fold(pure(Vector[A]()), (vs: Vector[A], a: A) => vs :+ a, (vs:Vector[A]) => pure(vs.toList))
 
   def collect[R :_eval, A](producer: Producer[R, A])(implicit m: Member[Writer[A, ?], R]): Eff[R, Unit] =
     producer.run flatMap {
-      case Done() => delay(())
+      case Done() => pure(())
       case One(a) => tell(a)
       case More(as, next) => as.traverse(tell[R, A]) >> collect(next)
     }
