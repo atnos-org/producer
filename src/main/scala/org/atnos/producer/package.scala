@@ -55,6 +55,11 @@ package object producer {
       Producer.flattenList(p)
   }
 
+  implicit class ProducerSeqOps[R :_safe, A](p: Producer[R, Seq[A]]) {
+    def flattenSeq: Producer[R, A] =
+      Producer.flattenSeq(p)
+  }
+
   implicit class ProducerFlattenOps[R :_safe, A](p: Producer[R, Producer[R, A]]) {
     def flatten: Producer[R, A] =
       Producer.flatten(p)

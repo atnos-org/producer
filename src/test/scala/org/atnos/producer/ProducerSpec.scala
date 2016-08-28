@@ -38,6 +38,7 @@ class ProducerSpec(implicit ee: ExecutionEnv) extends Specification with ScalaCh
   slide                      $slidingProducer
   chunk                      $chunkProducer
   flattenList                $flattenList1
+  flattenSeq                 $flattenSeq1
   flattenProducer            $flattenProducer1
   map                        $map1
   sequence futures           $sequenceFutures
@@ -121,6 +122,10 @@ class ProducerSpec(implicit ee: ExecutionEnv) extends Specification with ScalaCh
 
   def flattenList1 = prop { (xs: List[Int], n: Int) =>
     emit[S, Int](xs).sliding(n).flattenList.runLog ==== xs
+  }.setGen2(Gen.choose(0, 5)).noShrink
+
+  def flattenSeq1 = prop { (xs: List[Int], n: Int) =>
+    emit[S, Int](xs).sliding(n).map(_.toSeq: Seq[Int]).flattenSeq.runLog ==== xs
   }.setGen2(Gen.choose(0, 5)).noShrink
 
   def flattenProducer1 = prop { (xs: List[Int], n: Int) =>

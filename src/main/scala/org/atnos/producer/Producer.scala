@@ -131,6 +131,12 @@ trait Producers {
       case a :: as  => oneOrMore(a, as)
     }
 
+  def emitSeq[R :_safe, A](elements: Seq[A]): Producer[R, A] =
+    elements.headOption match {
+      case None    => done[R, A]
+      case Some(a) => one[R, A](a) append emitSeq(elements.tail)
+    }
+
   def eval[R :_safe, A](a: Eff[R, A]): Producer[R, A] =
     Producer(a.map(One(_)))
 
@@ -224,6 +230,9 @@ trait Producers {
       case Nil => done
       case p :: rest => p append flattenProducers(rest)
     }
+
+  def flattenSeq[R :_safe, A](producer: Producer[R, Seq[A]]): Producer[R, A] =
+    producer.flatMap(as => emitSeq(as.toList))
 
   /** accumulate chunks of size n inside More nodes */
   def chunk[R :_safe, A](size: Int)(producer: Producer[R, A]): Producer[R, A] = {
