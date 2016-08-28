@@ -118,7 +118,7 @@ trait Producers {
     Producer(protect(More(List(a), repeatValue(a))))
 
   def repeatEval[R :_safe, A](e: Eff[R, A]): Producer[R, A] =
-    emitEff(e.map(List(_))) append repeatEval(e)
+    Producer(e.flatMap(a => (one(a) append repeatEval(e)).run))
 
   def fill[R :_safe, A](n: Int)(p: Producer[R, A]): Producer[R, A] =
     if (n <= 0) done[R, A]
@@ -327,12 +327,20 @@ trait Transducers {
     }
 
   def take[R :_safe, A](n: Int): Transducer[R, A, A] =
-    cata_[R, A, A](
-      done[R, A],
-      (a: A) => if (n <= 0) done else one(a),
-      (as: List[A], next: Producer[R, A]) =>
-        if (n <= as.size) emit(as.take(n))
-        else emit(as) append (next |> take(n - as.size)))
+    (producer: Producer[R, A]) => {
+      def go(p: Producer[R, A], i: Int): Producer[R, A] =
+        if (i <= 0) done
+        else
+          Producer(p.run flatMap {
+            case Done() => done.run
+            case One(a) => (one(a) append go(p, i - 1)).run
+            case More(as, next) =>
+              if (as.size <= i) (emit(as) append go(next, i - as.size)).run
+              else              emit(as take i).run
+        })
+
+      go(producer, n)
+    }
 
   def takeWhile[R :_safe, A](f: A => Boolean): Transducer[R, A, A] =
     cata_[R, A, A](

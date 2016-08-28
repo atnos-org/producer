@@ -12,7 +12,7 @@ import org.specs2.concurrent.ExecutionEnv
 
 import scala.concurrent.Future
 import cats.implicits._
-  import cats.data.Writer
+import cats.data._
 import transducers._
 import org.atnos.eff._
 import all._
@@ -34,6 +34,7 @@ class ProducerSpec(implicit ee: ExecutionEnv) extends Specification with ScalaCh
   emit / filter / collect    $emitFilterCollect
   repeat a value             $repeat1
   repeat a producer          $repeat2
+  repeat an effect           $repeat3
   slide                      $slidingProducer
   chunk                      $chunkProducer
   flattenList                $flattenList1
@@ -105,6 +106,11 @@ class ProducerSpec(implicit ee: ExecutionEnv) extends Specification with ScalaCh
     collect(repeat[S, Int](one(1)).take(n)).runSafe.runWriterLog.run ==== List.fill(n)(1)
   }.setGen(Gen.choose(0, 10))
 
+  def repeat3 = prop { n: Int =>
+    repeatEval(tell[S1, String]("hello") >> pure(1)).take(n).runList.execSafe.runWriter.run must
+      be_==((Xor.Right(List.fill(n)(1)), List.fill(n)("hello")))
+  }.setGen(Gen.choose(0, 10))
+
   def slidingProducer = prop { (xs: List[Int], n: Int) =>
     emit[SL, Int](xs).sliding(n).runLog.flatten ==== xs
   }.setGen2(Gen.choose(0, 5)).noShrink
@@ -161,12 +167,14 @@ class ProducerSpec(implicit ee: ExecutionEnv) extends Specification with ScalaCh
   type WriterOption[A] = Writer[Option[Int], A]
   type WriterString[A] = Writer[String, A]
   type WriterList[A]   = Writer[List[Int], A]
+  type WriterUnit[A]   = Writer[Unit, A]
 
   type S0 = Fx.fx1[Safe]
   type S  = Fx.fx2[WriterInt, Safe]
   type S1 = Fx.fx2[WriterString, Safe]
   type SL = Fx.fx2[WriterList, Safe]
   type SO = Fx.fx2[WriterOption, Safe]
+  type SU  = Fx.fx2[WriterUnit, Safe]
 
   type ProducerInt          = Producer[Fx1[Safe], Int]
   type ProducerString       = Producer[Fx1[Safe], String]
