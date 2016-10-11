@@ -25,6 +25,12 @@ class TransducerSpec extends Specification with ScalaCheck { def is = s2"""
   zipWithIndex           $zipWithIndex1
   intersperse            $intersperse1
 
+  first                  $firstElement
+  last                   $lastElement
+  scan                   $scanElements
+  scan1                  $scan1Elements
+  reduceMap              $reduceElements
+
 """
   type S = Fx.fx1[Safe]
   
@@ -53,32 +59,32 @@ class TransducerSpec extends Specification with ScalaCheck { def is = s2"""
   }.setGen(Gen.listOf(Gen.choose(1, 100)))
 
   def receivedOption = prop { xs: List[Int] =>
-    (emit[S, Int](xs) |> receiveOption).safeToList ==== xs.map(Option(_)) ++ List(None)
+    (emit[S, Int](xs).receiveOption).safeToList ==== xs.map(Option(_)) ++ List(None)
   }.setGen(Gen.listOf(Gen.choose(1, 100)))
 
   def takeN = prop { (xs: List[Int], n: Int) =>
-    (emit[S, Int](xs) |> take(n)).safeToList ==== xs.take(n)
+    (emit[S, Int](xs).take(n)).safeToList ==== xs.take(n)
   }.setGen2(Gen.choose(0, 10))
 
   def takeException = prop { n: Int =>
     type R = Fx.fx2[WriterInt, Safe]
 
     val producer = emit[R, Int](List(1)) append emitEff[R, Int](protect { throw new Exception("boom"); List(1) })
-    (producer |> take(1)).runLog ==== List(1)
+    (producer.take(1)).runLog ==== List(1)
   }
 
   def zipWithNextElement = prop { xs: List[Int] =>
-    (emit[S, Int](xs) |> zipWithNext).safeToList ==== (xs zip (xs.drop(1).map(Option(_)) :+ None))
+    (emit[S, Int](xs).zipWithNext).safeToList ==== (xs zip (xs.drop(1).map(Option(_)) :+ None))
   }
 
   def zipWithPreviousElement = prop { xs: List[Int] =>
-    (emit[S, Int](xs) |> zipWithPrevious).safeToList ==== ((None +: xs.dropRight(1).map(Option(_))) zip xs)
+    (emit[S, Int](xs).zipWithPrevious).safeToList ==== ((None +: xs.dropRight(1).map(Option(_))) zip xs)
   }
 
   def zipWithPreviousAndNextElement = prop { xs: List[Int] =>
     val ls = emit[S, Int](xs)
-    (ls |> zipWithPreviousAndNext).safeToList ====
-      (ls |> zipWithPrevious).zip(ls |> zipWithNext).map { case ((previous, a), (_, next)) => (previous, a, next) }.safeToList
+    (ls.zipWithPreviousAndNext).safeToList ====
+      (ls.zipWithPrevious).zip(ls.zipWithNext).map { case ((previous, a), (_, next)) => (previous, a, next) }.safeToList
   }
 
   def zipWithIndex1 = prop { xs: List[Int] =>
@@ -88,6 +94,28 @@ class TransducerSpec extends Specification with ScalaCheck { def is = s2"""
   def intersperse1 = prop { (xs: List[String], c: String) =>
     emit[S, String](xs).intersperse(c).safeToList ==== intersperse(xs, c)
   }.noShrink.setGens(Gen.choose(0, 5).flatMap(n => Gen.listOfN(n, Gen.identifier)), Gen.oneOf("-", "_", ":"))
+
+  def firstElement = prop { xs: List[Int] =>
+    emit[S, Int](xs).first.safeToList ==== xs.headOption.toList
+  }
+
+  def lastElement = prop { xs: List[Int] =>
+    emit[S, Int](xs).last.safeToList ==== xs.lastOption.toList
+  }
+
+  def scanElements = prop { (xs: List[Int], s: Char) =>
+    val f = (s1: String, i1: Int) => s1 + i1.toString
+    emit[S, Int](xs).scan(s.toString)(f).safeToList ==== xs.scanLeft(s.toString)(f).toList
+  }.setGens(Gen.listOf(Gen.choose(1, 5)), Gen.choose('a', 'z'))
+
+  def scan1Elements = prop { xs: List[Int] =>
+    val f = (i: Int, j: Int) => i + j
+    emit[S, Int](xs).scan1(f).safeToList ==== xs.headOption.toList.flatMap(h => xs.drop(1).scanLeft(h)(f))
+  }.setGen(Gen.listOf(Gen.choose(1, 5)))
+
+  def reduceElements = prop { xs: List[String] =>
+    emit[S, String](xs).reduceMap(_.size).safeToList ==== (if (xs.isEmpty) Nil else List(xs.map(_.size).sum))
+  }
 
   /**
    * HELPERS

@@ -1,6 +1,6 @@
 package org.atnos
 
-import cats.Eval
+import cats.{Eval, Monoid, Semigroup}
 import cats.data.Xor
 import org.atnos.eff._
 import org.atnos.eff.all._
@@ -98,6 +98,30 @@ package object producer {
 
      def intersperse(a: A): Producer[R, A] =
        p |> transducers.intersperse(a: A)
+
+    def first: Producer[R, A] =
+      p |> transducers.first
+
+    def last: Producer[R, A] =
+      p |> transducers.last
+
+    def scan[B](start: B)(f: (B, A) => B): Producer[R, B] =
+      p |> transducers.scan(start)(f)
+
+    def scan1(f: (A, A) => A): Producer[R, A] =
+      p |> transducers.scan1(f)
+
+    def reduce(f: (A, A) => A): Producer[R, A] =
+      p |> transducers.reduce(f)
+
+    def reduceSemigroup(implicit semi: Semigroup[A]): Producer[R, A] =
+      p |> transducers.reduceSemigroup
+
+    def reduceMonoid(implicit monoid: Monoid[A]): Producer[R, A] =
+      p |> transducers.reduceMonoid
+
+    def reduceMap[B : Monoid](f: A => B): Producer[R, B] =
+      p |> transducers.reduceMap[R, A, B](f)
   }
 
   implicit class ProducerResourcesOps[R :_safe, A](p: Producer[R, A])(implicit s: Safe <= R) {
