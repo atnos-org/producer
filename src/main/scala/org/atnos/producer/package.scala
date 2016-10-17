@@ -4,6 +4,7 @@ import cats.{Eval, Monoid, Semigroup}
 import cats.data.Xor
 import org.atnos.eff._
 import org.atnos.eff.all._
+import org.atnos.eff.syntax.safe._
 
 package object producer {
 
@@ -48,6 +49,14 @@ package object producer {
 
     def repeat: Producer[R, A] =
       Producer.repeat(p)
+
+    def andFinally(last: Eff[R, Unit])(implicit safe: Safe <= R): Producer[R, A] =
+      Producer(p.run flatMap {
+        case Done() => pure(Done[R, A](): Stream[R, A]) `finally` last
+        case One(a) => pure(One[R, A](a): Stream[R, A]) `finally` last
+        case More(as, next) => pure(More[R, A](as, next `finally` last))
+      })
+
   }
 
   implicit class ProducerListOps[R :_safe, A](p: Producer[R, List[A]]) {
@@ -63,6 +72,11 @@ package object producer {
   implicit class ProducerFlattenOps[R :_safe, A](p: Producer[R, Producer[R, A]]) {
     def flatten: Producer[R, A] =
       Producer.flatten(p)
+  }
+
+  implicit class ProducerEffOps[R :_safe, F[_], A](p: Producer[R, Eff[R, A]]) {
+    def sequence(n: Int)(implicit f: F |= R): Producer[R, A] =
+      Producer.sequence[R, F, A](n)(p)
   }
 
   implicit class ProducerTransducerOps[R :_safe, A](p: Producer[R, A]) {
@@ -133,13 +147,6 @@ package object producer {
   }
 
   implicit class ProducerResourcesOps[R :_safe, A](p: Producer[R, A])(implicit s: Safe <= R) {
-    def andFinally(e: Eff[R, Unit]): Producer[R, A] =
-      Producer[R, A](p.run flatMap {
-        case Done() => safe.andFinally(Producer.done[R, A].run, e)
-        case One(a) => safe.andFinally(Producer.one[R, A](a).run, e)
-        case More(as, next) => protect(More(as, ProducerResourcesOps(next).andFinally(e)))
-      })
-
     def `finally`(e: Eff[R, Unit]): Producer[R, A] =
       p.andFinally(e)
 
