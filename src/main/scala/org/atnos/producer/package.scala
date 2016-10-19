@@ -11,6 +11,7 @@ package object producer {
   type Transducer[R, A, B] = Producer[R, A] => Producer[R, B]
 
   object producers extends Producers
+
   object transducers extends Transducers
 
   implicit class ProducerOps[R :_safe, A](p: Producer[R, A]) {
@@ -74,8 +75,8 @@ package object producer {
       Producer.flatten(p)
   }
 
-  implicit class ProducerEffOps[R :_safe, F[_], A](p: Producer[R, Eff[R, A]]) {
-    def sequence(n: Int)(implicit f: F |= R): Producer[R, A] =
+  implicit class ProducerEffOps[R :_safe, A](p: Producer[R, Eff[R, A]]) {
+    def sequence[F[_]](n: Int)(implicit f: F |= R): Producer[R, A] =
       Producer.sequence[R, F, A](n)(p)
   }
 

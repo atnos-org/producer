@@ -33,6 +33,7 @@ class TransducerSpec extends Specification with ScalaCheck { def is = s2"""
 
   A transducer can transform a producer statefully
     state            $stateTransducer
+    stateEval        $stateEvalTransducer
     with a producer  $producerStateTransducer
 
 """
@@ -124,6 +125,14 @@ class TransducerSpec extends Specification with ScalaCheck { def is = s2"""
   def stateTransducer = prop { xs: List[Int] =>
     val t = transducers.state[S, Int, String, Int](0) { case (i: Int, sum: Int) =>
       (s"$i and sum: $sum", sum + i)
+    }
+
+    t(emit[S, Int](xs)).safeToList ==== (xs zip xs.scanLeft(0)(_ + _)).map { case (i, s) => s"$i and sum: $s" }
+  }
+
+  def stateEvalTransducer = prop { xs: List[Int] =>
+    val t = transducers.stateEval[S, Int, String, Int](0) { case (i: Int, sum: Int) =>
+      protect((s"$i and sum: $sum", sum + i))
     }
 
     t(emit[S, Int](xs)).safeToList ==== (xs zip xs.scanLeft(0)(_ + _)).map { case (i, s) => s"$i and sum: $s" }

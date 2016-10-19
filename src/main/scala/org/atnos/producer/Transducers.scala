@@ -1,8 +1,12 @@
 package org.atnos.producer
 
 import cats._
+import org.atnos.eff._
 import org.atnos.eff.all._
+import org.atnos.eff.syntax.all._
 import Producer._
+import cats.data.State
+import cats.implicits._
 
 trait Transducers {
 
@@ -48,6 +52,30 @@ trait Transducers {
     go(producer, start)
   }
 
+  def stateEval[R :_safe, A, B, S](start: S)(f: (A, S) => Eff[R, (B, S)]): Transducer[R, A, B] = (producer: Producer[R, A]) => {
+    def go(p: Producer[R, A], s: S): Producer[R, B] =
+      Producer(p.run flatMap {
+        case Done() => done.run
+        case One(a) => oneEff(f(a, s).map(_._1)).run
+        case More(as, next) =>
+          type U = Fx.prepend[State[S, ?], R]
+          val traversed: Eff[U, List[B]] =
+            as.traverse { a: A =>
+              for {
+                s1 <- get[U, S]
+                bs <- f(a, s1).into[U]
+                _ <- put[U, S](bs._2)
+              } yield bs._1
+            }
+
+          val result: Eff[R, (List[B], S)] = traversed.runState(s)
+          result.flatMap { case (bs, news) =>
+            (emit(bs) append go(next, news)).run
+          }
+      })
+
+    go(producer, start)
+  }
 
   def receiveOr[R :_safe, A, B](f: A => Producer[R, B])(or: =>Producer[R, B]): Transducer[R, A, B] =
     cata_[R, A, B](
