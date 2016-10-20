@@ -77,6 +77,23 @@ trait Transducers {
     go(producer, start)
   }
 
+  def stateEff[R :_safe, A, B, S](start: S)(f: (A, S) => (Eff[R, B], S)): Transducer[R, A, Eff[R, B]] = (producer: Producer[R, A]) => {
+    def go(p: Producer[R, A], s: S): Producer[R, Eff[R, B]] =
+      Producer(p.run flatMap {
+        case Done() => done.run
+        case One(a) => one(f(a, s)._1).run
+        case More(as, next) =>
+          as match {
+            case Nil => go(next, s).run
+            case a :: rest =>
+              val (b, s1) = f(a, s)
+              (one(b) append go(emit(rest) append next, s1)).run
+          }
+      })
+
+    go(producer, start)
+  }
+
   def receiveOr[R :_safe, A, B](f: A => Producer[R, B])(or: =>Producer[R, B]): Transducer[R, A, B] =
     cata_[R, A, B](
       or,
