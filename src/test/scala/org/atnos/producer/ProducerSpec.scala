@@ -232,7 +232,8 @@ class ProducerSpec(implicit ee: ExecutionEnv) extends Specification with ScalaCh
     Gen.oneOf(
       (i: Int) => Producer.empty[Fx1[Safe], String],
       (i: Int) => one[Fx1[Safe], String](i.toString),
-      (i: Int) => one[Fx1[Safe], String](i.toString) > one((i + 1).toString))
+      (i: Int) => one[Fx1[Safe], String](i.toString) > one((i + 1).toString),
+      (i: Int) => emit[Fx1[Safe], String](List(i.toString, (i + 1).toString)))
   }
 
   implicit def ArbitraryKleisliIntString: Arbitrary[Int => ProducerWriterString] = Arbitrary {
