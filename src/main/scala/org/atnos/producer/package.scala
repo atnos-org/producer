@@ -1,7 +1,7 @@
 package org.atnos
 
 import cats.{Eval, Monoid, Semigroup}
-import cats.data.Xor
+import cats.implicits._
 import org.atnos.eff._
 import org.atnos.eff.all._
 import org.atnos.eff.syntax.safe._
@@ -151,13 +151,12 @@ package object producer {
     def `finally`(e: Eff[R, Unit]): Producer[R, A] =
       p.andFinally(e)
 
-    def attempt: Producer[R, Throwable Xor A] =
-      Producer[R, Throwable Xor A](SafeInterpretation.attempt(p.run) map {
-        case Xor.Right(Done()) => Done()
-        case Xor.Right(One(a)) => One(Xor.Right(a))
-        case Xor.Right(More(as, next)) => More(as.map(Xor.right), next.map(Xor.right))
-
-        case Xor.Left(t) => One(Xor.left(t))
+    def attempt: Producer[R, Throwable Either A] =
+      Producer[R, Throwable Either A](SafeInterpretation.attempt(p.run) map {
+        case Right(Done()) => Done()
+        case Right(One(a)) => One(Either.right(a))
+        case Right(More(as, next)) => More(as.map(Either.right), next.map(Either.right))
+        case Left(t) => One(Either.left(t))
       })
   }
 

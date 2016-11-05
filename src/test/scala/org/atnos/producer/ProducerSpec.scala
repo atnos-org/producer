@@ -1,18 +1,18 @@
 package org.atnos.producer
 
-import org.atnos.eff._
-import org.atnos.eff.all._
+import org.atnos.eff.{AsyncFutureService, _}
 import org.atnos.eff.syntax.all._
 import org.atnos.producer.Producer._
 import org.scalacheck._
 import org.specs2._
 import org.specs2.matcher._
-import XorMatchers._
+import EitherMatchers._
 import org.specs2.concurrent.ExecutionEnv
 
 import scala.concurrent.Future
 import cats.implicits._
 import cats.data._
+import cats.Eval
 import transducers._
 import org.atnos.eff._
 import all._
@@ -48,6 +48,7 @@ class ProducerSpec(implicit ee: ExecutionEnv) extends Specification with ScalaCh
 
   a producer can ensure resource safety
     it is possible to register an action which will only be executed when the producer has finished running $finalAction
+    if we fold over a producer, the final action must be executed *after* the folding is over               $foldingFinalAction
 
 """
 
@@ -109,7 +110,7 @@ class ProducerSpec(implicit ee: ExecutionEnv) extends Specification with ScalaCh
 
   def repeat3 = prop { n: Int =>
     repeatEval(tell[S1, String]("hello") >> pure(1)).take(n).runList.execSafe.runWriter.run must
-      be_==((Xor.Right(List.fill(n)(1)), List.fill(n)("hello")))
+      be_==((Right(List.fill(n)(1)), List.fill(n)("hello")))
   }.setGen(Gen.choose(0, 10))
 
   def slidingProducer = prop { (xs: List[Int], n: Int) =>
@@ -138,12 +139,15 @@ class ProducerSpec(implicit ee: ExecutionEnv) extends Specification with ScalaCh
   }.setGen(Gen.listOf(Gen.choose(1, 100)))
 
   def sequenceFutures = prop { xs: List[Int] =>
-    type SF = Fx.fx3[Writer[Int, ?], Safe, Future]
+    type SF = Fx.fx3[Writer[Int, ?], Safe, Async]
 
-    def doIt[R :_safe](implicit f: Future |= R): Producer[R, Int] =
-      sequence[R, Future, Int](4)(emit(xs.map(x => async(action(x)))))
+    lazy val asyncService = AsyncFutureService(Eval.now(ee.executionContext))
+    import asyncService._
 
-    doIt[SF].runLog.detach must be_==(xs).await
+    def doIt[R :_safe](implicit async: Async |= R): Producer[R, Int] =
+      sequence[R, Async, Int](4)(emit(xs.map(x => asyncFork(action(x)))))
+
+    doIt[SF].runLog.runAsyncFuture must be_==(xs).await
   }.noShrink.setGen(Gen.listOfN(3, Gen.choose(20, 300))).set(minTestsOk = 1)
 
   def followed = prop { (xs1: List[Int], xs2: List[Int]) =>
@@ -159,10 +163,27 @@ class ProducerSpec(implicit ee: ExecutionEnv) extends Specification with ScalaCh
     val messages = new ListBuffer[String]
 
     val producer = emitEff[S, Int](protect(xs)).map(x => messages.append(x.toString)).andFinally(protect[S, Unit](messages.append("end")))
-    producer.to(folds.list.into[S]).runSafe.runSafe
+    producer.to(folds.list.into[S]).runSafe.runSafe.run
 
-    messages.toList ==== xs.toList.map(_.toString) :+ "end"
+    messages.toList ==== xs.map(_.toString) :+ "end"
   }
+
+  def foldingFinalAction = prop { xs: List[String] =>
+    type R = Fx.fx2[Safe, Eval]
+    val messages = new ListBuffer[String]
+
+    val sizeFold: Fold[R, Unit, Int] = new Fold[R, Unit, Int] {
+      type S = Int
+      def start = pure(0)
+      def fold = (s: S, a: Unit) => s + 1
+      def end(s: S) = protect[R, Unit](messages.append("end-fold")).as(s)
+    }
+
+    val producer = emitEff[R, String](protect(xs)).map(x => messages.append(x)).andFinally(protect[R, Unit](messages.append("end")))
+    producer.to(sizeFold).runSafe.runEval.run 
+
+    messages.toList ==== xs ++ List("end-fold", "end")
+  }.setGen(Gen.listOf(Gen.oneOf("a", "b", "c")))
 
   /**
    * HELPERS

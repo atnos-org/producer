@@ -58,6 +58,9 @@ case class Producer[R :_safe, A](run: Eff[R, Stream[R, A]]) {
               (emit(as zip bs) append ((emit(as.drop(bs.size)) append nexta) zip nextb)).run
         }
     })
+
+  def andFinally(last: Eff[R, Unit]): Producer[R, A] =
+    Producer(run.addLast(last))
 }
 
 
@@ -97,6 +100,12 @@ object Producer extends Producers {
 
     def pure[A](a: A): Producer[R, A] =
       one(a)
+
+    def tailRecM[A, B](a: A)(f: A => Producer[R, Either[A, B]]): Producer[R, B] =
+      flatMap(f(a)) {
+        case Right(b)   => pure(b)
+        case Left(next) => tailRecM(next)(f)
+      }
   }
 
 }
@@ -156,17 +165,15 @@ trait Producers {
 
   def fold[R :_safe, A, B, S](producer: Producer[R, A])(start: Eff[R, S], f: (S, A) => S, end: S => Eff[R, B]): Eff[R, B] =
     start.flatMap { init =>
-      def go(p: Producer[R, A], s: S): Eff[R, S] =
+      def go(p: Producer[R, A], s: S): Eff[R, B] =
         p.run flatMap {
-          case Done() => pure[R, S](s)
-          case One(a) => protect[R, S](f(s, a))
-          case More(as, next) =>
-            val newS = as.foldLeft(s)(f)
-            go(next, newS)
+          case Done() => end(s)
+          case One(a) => end(f(s, a))
+          case More(as, next) => go(next, as.foldLeft(s)(f))
         }
 
       go(producer, init)
-    } flatMap end
+    }
 
   def observe[R :_safe, A, S](producer: Producer[R, A])(start: Eff[R, S], f: (S, A) => S, end: S => Eff[R, Unit]): Producer[R, A] =
     Producer[R, A](start flatMap { init =>
