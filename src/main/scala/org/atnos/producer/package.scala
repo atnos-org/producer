@@ -52,11 +52,7 @@ package object producer {
       Producer.repeat(p)
 
     def andFinally(last: Eff[R, Unit])(implicit safe: Safe <= R): Producer[R, A] =
-      Producer(p.run flatMap {
-        case Done() => pure(Done[R, A](): Stream[R, A]) `finally` last
-        case One(a) => pure(One[R, A](a): Stream[R, A]) `finally` last
-        case More(as, next) => pure(More[R, A](as, next `finally` last))
-      })
+      p.andFinally(last)
 
   }
 
