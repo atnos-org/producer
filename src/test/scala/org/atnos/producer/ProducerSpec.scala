@@ -141,10 +141,10 @@ class ProducerSpec(implicit ee: ExecutionEnv) extends Specification with ScalaCh
   def sequenceFutures = prop { xs: List[Int] =>
     type SF = Fx.fx3[Writer[Int, ?], Safe, Async]
 
-    lazy val asyncService = AsyncFutureService(Eval.now(ee.executionContext))
+    lazy val asyncService = AsyncFutureService.fromExecutionContext(ee.executionContext)
     import asyncService._
 
-    def doIt[R :_safe](implicit async: Async |= R): Producer[R, Int] =
+    def doIt[R :_Safe](implicit async: Async |= R): Producer[R, Int] =
       sequence[R, Async, Int](4)(emit(xs.map(x => asyncFork(action(x)))))
 
     doIt[SF].runLog.runAsyncFuture must be_==(xs).await
@@ -278,7 +278,7 @@ class ProducerSpec(implicit ee: ExecutionEnv) extends Specification with ScalaCh
       (i: Option[Int]) => one[Fx.fx2[WriterInt, Safe], Int](3) > one(i.map(_ + 1).getOrElse(0)))
   }
 
-  implicit class ProducerFolds[R :_safe, A](p: Producer[R, A]) {
+  implicit class ProducerFolds[R :_Safe, A](p: Producer[R, A]) {
     def to[B](f: Fold[R, A, B]): Eff[R, B] =
       p.fold[B, f.S](f.start, f.fold, f.end)
 

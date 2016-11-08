@@ -57,10 +57,10 @@ val converter: Task[Unit] =
 
 object io {
 
-  def openFile[R :_safe](path: String, encoding: String, size: Int = 4096): Eff[R, BufferedReader] =
+  def openFile[R :_Safe](path: String, encoding: String, size: Int = 4096): Eff[R, BufferedReader] =
     protect[R, BufferedReader](new BufferedReader(new InputStreamReader(new FileInputStream(path), encoding), size))
 
-  def readerLines[R :_safe]: BufferedReader => Producer[R, String] =
+  def readerLines[R :_Safe]: BufferedReader => Producer[R, String] =
     (reader: BufferedReader) => {
       def go: Producer[R, String] = {
         producers.eval(protect[R, Producer[R, String]] {
@@ -72,13 +72,13 @@ object io {
       go
     }
 
-  def closeFile[R :_safe ] = (reader: BufferedReader) =>
+  def closeFile[R :_Safe ] = (reader: BufferedReader) =>
     protect[R, Unit](reader.close)
 
   def readLines[R :_Safe](path: String, encoding: String = "UTF-8", size: Int = 4096): Producer[R, String] =
     bracket(openFile[R](path, encoding, size))(readerLines)(closeFile)
 
-  def writeLines[R :_safe](path: String, encoding: String = "UTF-8"): Fold[R, String, Unit] = new Fold[R, String, Unit] {
+  def writeLines[R :_Safe](path: String, encoding: String = "UTF-8"): Fold[R, String, Unit] = new Fold[R, String, Unit] {
     type S = BufferedWriter
 
     def start: Eff[R, S] =
@@ -90,7 +90,7 @@ object io {
       protect[R, Unit](s.close)
   }
 
-  implicit class ProducerFolds[R :_safe, A](p: Producer[R, A]) {
+  implicit class ProducerFolds[R :_Safe, A](p: Producer[R, A]) {
     def to[B](f: Fold[R, A, B]): Eff[R, B] =
       p.fold[B, f.S](f.start, f.fold, f.end)
 

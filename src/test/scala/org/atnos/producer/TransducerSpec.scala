@@ -49,7 +49,7 @@ class TransducerSpec extends Specification with ScalaCheck { def is = s2"""
   def received = prop { xs: List[Int] =>
     val f = (x: Int) => (x+ 1).toString
 
-    def plusOne[R :_safe] =
+    def plusOne[R :_Safe] =
       receive[R, Int, String](a => one(f(a)))
 
     (emit[S, Int](xs) |> plusOne).safeToList ==== xs.map(f)
@@ -58,7 +58,7 @@ class TransducerSpec extends Specification with ScalaCheck { def is = s2"""
   def receivedOr = prop { xs: List[Int] =>
     val f = (x: Int) => (x+ 1).toString
 
-    def plusOne[R :_safe] =
+    def plusOne[R :_Safe] =
       receiveOr[R, Int, String](a => one(f(a)))(emit(List("1", "2", "3")))
 
     (Producer.done[S, Int] |> plusOne).safeToList ==== List("1", "2", "3")
@@ -75,7 +75,7 @@ class TransducerSpec extends Specification with ScalaCheck { def is = s2"""
   def takeException = prop { n: Int =>
     type R = Fx.fx2[WriterInt, Safe]
 
-    val producer = emit[R, Int](List(1)) append emitEff[R, Int](protect { throw new Exception("boom"); List(1) })
+    val producer = emit[R, Int](List(1)) append emitEff[R, Int](protect { throw new Exception("boom"); List(2) })
     (producer.take(1)).runLog ==== List(1)
   }
 
@@ -163,17 +163,17 @@ class TransducerSpec extends Specification with ScalaCheck { def is = s2"""
 
   implicit class ProducerOperations[W](p: Producer[Fx2[Writer[W, ?], Safe], W]) {
     def runLog: List[W] =
-      collect[Fx2[Writer[W, ?], Safe], W](p).runWriterLog.runSafe.run._1.toOption.get
+      collect[Fx2[Writer[W, ?], Safe], W](p).runWriterLog.runSafe.run._1.toOption.getOrElse(Nil)
   }
 
   implicit class ProducerOperations2[W, U[_]](p: Producer[Fx3[Writer[W, ?], U, Safe], W]) {
     def runLog =
-      collect[Fx3[Writer[W, ?], U, Safe], W](p).runWriterLog.runSafe.map(_._1.toOption.get)
+      collect[Fx3[Writer[W, ?], U, Safe], W](p).runWriterLog.runSafe.map(_._1.toOption.getOrElse(Nil))
   }
 
   implicit class ProducerOperations3[A](p: Producer[Fx1[Safe], A]) {
     def safeToList =
-      p.runList.runSafe.run._1.toOption.get
+      p.runList.runSafe.run._1.toOption.getOrElse(Nil)
   }
 
   def intersperse[A](as: List[A], a: A): List[A] =
