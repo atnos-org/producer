@@ -54,27 +54,7 @@ val converter: Task[Unit] =
 
   def resource(path: String) =
     getClass.getClassLoader.getResource(path).toURI.toURL.getFile
-}
 
-object io {
-
-  def openFile[R :_Safe](path: String, encoding: String, size: Int = 4096): Eff[R, BufferedReader] =
-    protect[R, BufferedReader](new BufferedReader(new InputStreamReader(new FileInputStream(path), encoding), size))
-
-  def readerLines[R :_Safe]: BufferedReader => Producer[R, String] =
-    (reader: BufferedReader) =>
-      unfold[R, BufferedReader, String](reader) { r =>
-        val line = r.readLine
-        if (line == null) None
-        else Some((r, line))
-      }
-
-  def closeFile[R :_Safe] = (reader: BufferedReader) =>
-    protect[R, Unit](reader.close)
-
-  def readLines[R :_Safe](path: String, encoding: String = "UTF-8", size: Int = 4096): Producer[R, String] =
-    bracket(openFile[R](path, encoding, size))(readerLines)(closeFile)
-  
   def writeLines[R :_Safe](path: String, encoding: String = "UTF-8"): Fold[R, String, Unit] = new Fold[R, String, Unit] {
     type S = BufferedWriter
 
@@ -86,8 +66,8 @@ object io {
     def end(s: S): Eff[R, Unit] =
       protect[R, Unit](s.close)
   }
-
 }
+
 
 object Producerx {
 
