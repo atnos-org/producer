@@ -1,6 +1,6 @@
 package org.atnos.producer
 
-import org.atnos.eff.{AsyncFutureService, _}
+import org.atnos.eff._
 import org.atnos.eff.syntax.all._
 import org.atnos.producer.Producer._
 import org.scalacheck._
@@ -141,8 +141,8 @@ class ProducerSpec(implicit ee: ExecutionEnv) extends Specification with ScalaCh
   def sequenceFutures = prop { xs: List[Int] =>
     type SF = Fx.fx3[Writer[Int, ?], Safe, Async]
 
-    lazy val asyncService = AsyncFutureService.fromExecutionContext(ee.executionContext)
-    import asyncService._
+    lazy val async = AsyncFutureInterpreter.fromExecutionContext(ee.executionContext)
+    import async._
 
     def doIt[R :_Safe](implicit async: Async |= R): Producer[R, Int] =
       sequence[R, Async, Int](4)(emit(xs.map(x => asyncFork(action(x)))))

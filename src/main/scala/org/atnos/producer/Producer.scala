@@ -136,6 +136,14 @@ trait Producers {
   def oneOrMore[R :_Safe, A](a: A, as: List[A]): Producer[R, A] =
     Producer[R, A](pure(More(a +: as, done)))
 
+  def unfold[R :_Safe, A, B](a: A)(f: A => Option[(A, B)]): Producer[R, B] =
+    Producer[R, B](protect {
+      f(a) match {
+        case Some((a1, b)) => More[R, B](List(b), unfold(a1)(f))
+        case None          => Done[R, B]()
+      }
+    })
+
   def repeat[R :_Safe, A](p: Producer[R, A]): Producer[R, A] =
     Producer(p.run flatMap {
       case Done() => pure(Done())
@@ -165,6 +173,10 @@ trait Producers {
       case None    => done[R, A]
       case Some(a) => one[R, A](a) append emitSeq(elements.tail)
     }
+
+  def emitIterator[R :_Safe, A](elements: Iterator[A]): Producer[R, A] =
+    if (elements.hasNext) one[R, A](elements.next) append emitIterator(elements)
+    else done[R, A]
 
   def eval[R :_Safe, A](a: Eff[R, A]): Producer[R, A] =
     Producer(a.map(One(_)))
