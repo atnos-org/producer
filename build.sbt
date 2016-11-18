@@ -9,7 +9,6 @@ lazy val producer = project.in(file("."))
   .settings(moduleName := "producer")
   .settings(buildSettings)
   .settings(publishSettings)
-  .settings(promulgate.library("org.atnos", "producer"):_*)
   .settings(commonSettings)
 
 lazy val buildSettings = Seq(

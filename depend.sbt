@@ -1,6 +1,6 @@
-lazy val effcatsVersion = "2.0.0-RC22"
+lazy val effcatsVersion = "2.0.0-RC27"
 lazy val specs2Version  = "3.8.6"
-lazy val origamiVersion = "2.0.0-20160813102620-cc1f404"
+lazy val origamiVersion = "2.1.0"
 
 libraryDependencies :=
   effcats ++
