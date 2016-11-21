@@ -46,6 +46,38 @@ trait Transducers {
       go(producer, start)
     }
 
+  def producerStateEff[R :_Safe, A, B, S](start: S, last: Option[S => Producer[R, B]] = None)(f: (A, S) => Eff[R, (Producer[R, B], S)]): Transducer[R, A, B] =
+    (producer: Producer[R, A]) => {
+      def go(p: Producer[R, A], s: S): Producer[R, B] =
+        Producer(p.run flatMap {
+          case Done() =>
+            last match {
+              case Some(l) => l(s).run
+              case None    => done.run
+            }
+
+          case One(a) =>
+            f(a, s).flatMap { case (b, news) =>
+              last match {
+                case None => b.run
+                case Some(l) => (b append l(news)).run
+              }
+            }
+
+          case More(as, next) =>
+            val res = as.drop(1).foldLeft(f(as.head, s)) { (res, a) =>
+              res.flatMap { case (pb, s1) =>
+                f(a, s1).map { case (pb1, s2) =>
+                  (pb append pb1, s2)
+                }
+              }
+            }
+            producers.eval(res.map { case (bs, news) => bs append go(next, news) }).flatten.run
+        })
+
+      go(producer, start)
+    }
+
   def state[R :_Safe, A, B, S](start: S)(f: (A, S) => (B, S)): Transducer[R, A, B] = (producer: Producer[R, A]) => {
     def go(p: Producer[R, A], s: S): Producer[R, B] =
       Producer(p.run flatMap {
