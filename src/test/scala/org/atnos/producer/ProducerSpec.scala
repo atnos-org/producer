@@ -50,6 +50,8 @@ class ProducerSpec(implicit ee: ExecutionEnv) extends Specification with ScalaCh
     it is possible to register an action which will only be executed when the producer has finished running $finalAction
     if we fold over a producer, the final action must be executed *after* the folding is over               $foldingFinalAction
 
+  Producer.append is stacksafe $stacksafeAppend
+
 """
 
   def monoid = prop { (p1: ProducerWriterInt, p2: ProducerWriterInt, p3: ProducerWriterInt) =>
@@ -184,6 +186,10 @@ class ProducerSpec(implicit ee: ExecutionEnv) extends Specification with ScalaCh
 
     messages.toList ==== xs ++ List("end-fold", "end")
   }.setGen(Gen.listOf(Gen.oneOf("a", "b", "c")))
+
+  def stacksafeAppend = {
+    List.fill(100000)(1).map(i => one(i)).foldMap(identity) must not(throwAn[Exception])
+  }
 
   /**
    * HELPERS

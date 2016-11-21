@@ -1,6 +1,7 @@
 package org.atnos.producer
 
-import cats._, data._
+import cats._
+import data._
 import cats.implicits._
 import org.atnos.eff._
 import org.atnos.eff.all._
@@ -23,25 +24,23 @@ case class Producer[R :_Safe, A](run: Eff[R, Stream[R, A]]) {
   def map[B](f: A => B): Producer[R, B] =
     flatMap(a => one(f(a)))
 
-  def append(other: Producer[R, A]): Producer[R, A] =
+
+  def append(other: Producer[R, A]): Producer[R, A] = {
     Producer(run flatMap {
       case Done() => other.run
 
       case One(a) =>
-        val appended: Eff[R, Stream[R, A]] =
-          protect(other.run.map[Stream[R, A]] {
-            case Done() => One(a)
-            case One(b) => More(List(a, b), done)
-            case More(bs, next) => More(a +: bs, next)
-         }).flatten
-
-        appended.attempt.map {
-          case Right(r) => r
-          case Left(t)  => One(a)
-        }
+        protect(
+          other.run.attempt.map[Stream[R, A]] {
+            case Right(Done()) => One(a)
+            case Right(One(b)) => More(List(a, b), done)
+            case Right(More(bs, next)) => More(a +: bs, next)
+            case Left(t) => One(a)
+          }).flatten
 
       case More(as, next) => protect(More(as, next append other))
     })
+  }
 
   def zip[B](other: Producer[R, B]): Producer[R, (A, B)] =
     Producer(run flatMap {
