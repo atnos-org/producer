@@ -188,7 +188,12 @@ class ProducerSpec(implicit ee: ExecutionEnv) extends Specification with ScalaCh
   }.setGen(Gen.listOf(Gen.oneOf("a", "b", "c")))
 
   def stacksafeAppend = {
-    List.fill(100000)(1).map(i => one(i)).foldMap(identity) must not(throwAn[Exception])
+    val ones = Producer.unfold(1) { i =>
+      if (i >= 10000) None
+      else Some((i - 1, 1))
+    }
+
+    (one(1) append ones).take(10).runList.execSafe.run ==== Right(List.fill(10)(1))
   }
 
   /**

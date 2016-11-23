@@ -24,20 +24,10 @@ case class Producer[R :_Safe, A](run: Eff[R, Stream[R, A]]) {
   def map[B](f: A => B): Producer[R, B] =
     flatMap(a => one(f(a)))
 
-
   def append(other: Producer[R, A]): Producer[R, A] = {
     Producer(run flatMap {
-      case Done() => other.run
-
-      case One(a) =>
-        protect(
-          other.run.attempt.map[Stream[R, A]] {
-            case Right(Done()) => One(a)
-            case Right(One(b)) => More(List(a, b), done)
-            case Right(More(bs, next)) => More(a +: bs, next)
-            case Left(t) => One(a)
-          }).flatten
-
+      case Done()         => protect(other.run).flatten
+      case One(a)         => protect(More(List(a), other))
       case More(as, next) => protect(More(as, next append other))
     })
   }
@@ -139,6 +129,14 @@ trait Producers {
     Producer[R, B](protect {
       f(a) match {
         case Some((a1, b)) => More[R, B](List(b), unfold(a1)(f))
+        case None          => Done[R, B]()
+      }
+    })
+
+  def unfoldList[R :_Safe, A, B](a: A)(f: A => Option[(A, NonEmptyList[B])]): Producer[R, B] =
+    Producer[R, B](protect {
+      f(a) match {
+        case Some((a1, bs)) => More[R, B](bs.toList, unfoldList(a1)(f))
         case None          => Done[R, B]()
       }
     })
