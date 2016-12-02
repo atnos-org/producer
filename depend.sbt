@@ -1,9 +1,9 @@
-lazy val effcatsVersion = "2.0.0-RC27"
+lazy val effVersion     = "2.0.0"
 lazy val specs2Version  = "3.8.6"
-lazy val origamiVersion = "2.1.1"
+lazy val origamiVersion = "2.2.0"
 
 libraryDependencies :=
-  effcats ++
+  eff    ++
   specs2 ++
   origami
 
@@ -15,8 +15,8 @@ resolvers ++= Seq(
 addCompilerPlugin("org.spire-math" %% "kind-projector" % "0.7.1")
 addCompilerPlugin("com.milessabin" % "si2712fix-plugin_2.11.8" % "1.2.0")
 
-lazy val effcats = Seq(
-  "org.atnos" %% "eff-cats" % effcatsVersion)
+lazy val eff = Seq(
+  "org.atnos" %% "eff" % effVersion)
 
 lazy val origami = Seq(
   "org.atnos" %% "origami-core",
