@@ -45,6 +45,9 @@ package object producer {
     def runLast: Eff[R, Option[A]] =
       Producer.runLast(p)
 
+    def drain: Eff[R, Unit] =
+      Producer.runLast(p).as(())
+
     def runList: Eff[R, List[A]] =
       Producer.runList(p)
 
@@ -133,6 +136,9 @@ package object producer {
 
     def reduceMap[B : Monoid](f: A => B): Producer[R, B] =
       p |> transducers.reduceMap[R, A, B](f)
+
+    def mapEval[B](f: A => Eff[R, B]): Producer[R, B] =
+      p |> transducers.mapEval[R, A, B](f)
   }
 
   implicit class TransducerOps[R :_Safe, A, B](t: Transducer[R, A, B]) {

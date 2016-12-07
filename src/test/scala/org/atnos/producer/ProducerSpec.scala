@@ -29,6 +29,7 @@ class ProducerSpec(implicit ee: ExecutionEnv) extends Specification with ScalaCh
   producers behave like a list monad                $listMonad
   a producer with no effect is a Foldable           $foldable
   a producer can be folded with effects             $effectFoldable
+  a producer can be folded with a state effect      $stateEffectFoldable
 
   emit / collect             $emitCollect
   emit / filter / collect    $emitFilterCollect
@@ -93,6 +94,20 @@ class ProducerSpec(implicit ee: ExecutionEnv) extends Specification with ScalaCh
     }
 
   }.noShrink
+
+  def stateEffectFoldable = prop { list: List[Int] =>
+    // we want to compute the sum
+    type S = Fx.fx2[Safe, State[Int, ?]]
+
+    val producer: Producer[S, Int] = emit[S, Int](list).mapEval { i =>
+      for {
+        n <- get[S, Int]
+        _ <- put[S, Int](n + i)
+      } yield i
+    }
+
+    producer.drain.execState(0).execSafe.run must beRight(list.sum)
+  }.setGen(Gen.nonEmptyListOf(Gen.choose(1, 10)))
 
   def emitCollect = prop { xs: List[Int] =>
     emit[S, Int](xs).runLog ==== xs

@@ -125,6 +125,19 @@ trait Producers {
   def oneOrMore[R :_Safe, A](a: A, as: List[A]): Producer[R, A] =
     Producer[R, A](pure(More(a +: as, done)))
 
+  def fromState[R :_Safe, A, S](state: State[S, A])(implicit m: State[S, ?] |= R): Producer[R, A] = {
+    Producer.eval {
+      for {
+        s <- get[R, S]
+        (s1, a) = state.run(s).value
+        _ <- put[R, S](s1)
+      } yield a
+    } append fromState(state)
+  }
+
+  def unfoldState[R :_Safe, A, S](s: S)(state: State[S, A]): Producer[R, A] =
+    unfold(s)(s1 => Some(state.run(s1).value))
+
   def unfold[R :_Safe, A, B](a: A)(f: A => Option[(A, B)]): Producer[R, B] =
     Producer[R, B](protect {
       f(a) match {

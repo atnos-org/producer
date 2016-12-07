@@ -316,6 +316,8 @@ trait Transducers {
               })).run
         })
 
+  def mapEval[R :_Safe, A, B](f: A => Eff[R, B]): Transducer[R, A, B] = (p: Producer[R, A]) =>
+    p.flatMap(a => Producer.eval[R, B](f(a)))
 
   private def cata_[R :_Safe, A, B](onDone: Producer[R, B], onOne: A => Producer[R, B], onMore: (List[A], Producer[R, A]) => Producer[R, B]): Transducer[R, A, B] =
     (producer: Producer[R, A]) => cata(producer)(onDone, onOne, onMore)
