@@ -32,6 +32,17 @@ case class Producer[R :_Safe, A](run: Eff[R, Stream[R, A]]) {
     })
   }
 
+  def flatMapList[B](f: A => List[B]): Producer[R, B] =
+    Producer(run flatMap {
+      case Done() => done.run
+      case One(a) => f(a) match {
+        case Nil => done.run
+        case bs => pure(More(bs, done))
+      }
+      case More(as, next) =>
+        pure(More(as flatMap f, next flatMapList f))
+    })
+
   def zip[B](other: Producer[R, B]): Producer[R, (A, B)] =
     Producer(run flatMap {
       case Done() => done.run

@@ -1,4 +1,4 @@
-lazy val effVersion     = "2.0.0"
+lazy val effVersion     = "2.0.2"
 lazy val specs2Version  = "3.8.6"
 lazy val origamiVersion = "2.2.0"
 
