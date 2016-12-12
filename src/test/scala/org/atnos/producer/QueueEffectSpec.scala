@@ -49,6 +49,7 @@ class QueueEffectSpec(implicit ee: ExecutionEnv) extends Specification { def is 
       runQueueAsync(add >> p.runList).execSafe.runAsyncFuture
 
     action must beRight((1 to 5).toList).await
+    pending
   }
 
 }
