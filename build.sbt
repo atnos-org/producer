@@ -89,7 +89,7 @@ lazy val sharedReleaseProcess = Seq(
   , commitReleaseVersion
   , tagRelease
   , generateWebsite
-  , publishSite
+//  , publishSite
   , publishArtifacts
   , setNextVersion
   , commitNextVersion
