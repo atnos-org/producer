@@ -12,8 +12,6 @@ resolvers ++= Seq(
   , Resolver.typesafeRepo("releases")
   , Resolver.url("ambiata-oss", new URL("https://ambiata-oss.s3.amazonaws.com"))(Resolver.ivyStylePatterns))
 
-addCompilerPlugin("org.spire-math" %% "kind-projector" % "0.9.3")
-
 lazy val eff = Seq(
   "org.atnos" %% "eff" % effVersion)
 

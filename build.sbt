@@ -20,6 +20,7 @@ lazy val buildSettings = Seq(
 def commonSettings = Seq(
   scalacOptions ++= commonScalacOptions,
   scalacOptions in (Compile, doc) := (scalacOptions in (Compile, doc)).value.filter(_ != "-Xfatal-warnings"),
+  addCompilerPlugin("org.spire-math" %% "kind-projector" % "0.9.3"),
   si2712,
   libraryDependencies ++= si2712Dependency(scalaVersion.value)
 ) ++ warnUnusedImport ++ prompt
