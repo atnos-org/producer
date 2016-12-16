@@ -13,14 +13,15 @@ lazy val producer = project.in(file("."))
 
 lazy val buildSettings = Seq(
   organization := "org.atnos",
-  scalaVersion := "2.11.8"
+  scalaVersion := "2.12.1",
+  crossScalaVersions := Seq("2.11.8", "2.12.1")
 )
 
 def commonSettings = Seq(
   scalacOptions ++= commonScalacOptions,
   scalacOptions in (Compile, doc) := (scalacOptions in (Compile, doc)).value.filter(_ != "-Xfatal-warnings"),
-  addCompilerPlugin("org.spire-math" %% "kind-projector" % "0.9.3"),
-  addCompilerPlugin("com.milessabin" % "si2712fix-plugin_2.11.8" % "1.2.0")
+  si2712,
+  libraryDependencies ++= si2712Dependency(scalaVersion.value)
 ) ++ warnUnusedImport ++ prompt
 
 lazy val tagName = Def.setting{
@@ -159,3 +160,14 @@ def testTask(task: TaskKey[Tests.Output]) =
   task <<= (streams in Test, loadedTestFrameworks in Test, testLoader in Test,
     testGrouping in Test in test, testExecution in Test in task,
     fullClasspath in Test in test, javaHome in test) flatMap Defaults.allTestGroupsTask
+
+lazy val si2712 =
+  scalacOptions ++=
+    (if (CrossVersion.partialVersion(scalaVersion.value).exists(_._2 >= 12)) Seq("-Ypartial-unification")
+    else Seq())
+
+def si2712Dependency(scalaVersion: String) =
+  if (CrossVersion.partialVersion(scalaVersion).exists(_._2 < 12))
+    Seq(compilerPlugin("com.milessabin" % ("si2712fix-plugin_"+scalaVersion) % "1.2.0"))
+  else
+    Seq()
