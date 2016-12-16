@@ -8,25 +8,30 @@ import org.atnos.eff.all._
 import org.atnos.eff.syntax.all._
 import Producer._
 
-sealed trait Stream[R, A]
-case class Done[R, A]() extends Stream[R, A]
-case class One[R, A](a: A) extends Stream[R, A]
-case class More[R, A](as: List[A], next: Producer[R, A]) extends Stream[R, A]
-
 case class Producer[R :_Safe, A](run: Eff[R, Stream[R, A]]) {
 
   def flatMap[B](f: A => Producer[R, B]): Producer[R, B] =
     cata[R, A, B](this)(
       done[R, B],
       (a: A) => f(a),
-      (as: List[A], next: Producer[R, A]) => as.map(f).foldMap(identity) append next.flatMap(f))
+      (as: List[A], next: Producer[R, A]) => {
+        as match {
+          case Nil => next.flatMap(f)
+          case a :: Nil => f(a) append next.flatMap(f)
+          case a :: tail => f(a) append Producer[R, A](protect(More(tail, next))).flatMap(f)
+        }
+      }
+    )
 
   def map[B](f: A => B): Producer[R, B] =
-    flatMap(a => one(f(a)))
+    cata[R, A, B](this)(
+      done[R, B],
+      (a: A) => one(f(a)),
+      (as: List[A], next: Producer[R, A]) => emit(as.map(f)) append next.map(f))
 
   def append(other: Producer[R, A]): Producer[R, A] = {
     Producer(run flatMap {
-      case Done()         => protect(other.run).flatten
+      case Done()         => other.run
       case One(a)         => protect(More(List(a), other))
       case More(as, next) => protect(More(as, next append other))
     })
@@ -161,7 +166,7 @@ trait Producers {
     Producer[R, B](protect {
       f(a) match {
         case Some((a1, bs)) => More[R, B](bs.toList, unfoldList(a1)(f))
-        case None          => Done[R, B]()
+        case None           => Done[R, B]()
       }
     })
 

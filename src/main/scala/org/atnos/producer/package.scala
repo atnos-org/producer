@@ -39,6 +39,12 @@ package object producer {
     def fold[B, S](start: Eff[R, S], f: (S, A) => S, end: S => Eff[R, B]): Eff[R, B] =
       Producer.fold(p)(start, f, end)
 
+    def foldLeft[S](init: S)(f: (S, A) => S): Eff[R, S] =
+      Producer.fold(p)(Eff.pure(init), f, (s: S) => pure(s))
+
+    def foldMonoid(implicit m: Monoid[A]): Eff[R, A] =
+      foldLeft(Monoid[A].empty)(Monoid[A].combine)
+
     def observe[S](start: Eff[R, S], f: (S, A) => S, end: S => Eff[R, Unit]): Producer[R, A] =
       Producer.observe(p)(start, f, end)
 
