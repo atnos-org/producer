@@ -54,7 +54,6 @@ lazy val commonScalacOptions = Seq(
   "-unchecked",
   "-Xfatal-warnings",
   "-Xlint",
-  "-Yinline-warnings",
   "-Yno-adapted-args",
   "-Ywarn-numeric-widen",
   "-Ywarn-value-discard",
@@ -94,7 +93,6 @@ lazy val sharedReleaseProcess = Seq(
   , publishArtifacts
   , setNextVersion
   , commitNextVersion
-  , ReleaseStep(action = Command.process("sonatypeReleaseAll", _), enableCrossBuild = true)
   , pushChanges
   )
 ) ++
