@@ -14,6 +14,9 @@ class QueueEffectSpec(implicit ee: ExecutionEnv) extends Specification { def is 
  A Producer can be created out of a queue $producerFromQueue
 
 """
+  lazy val interpreter = AsyncFutureInterpreter.create
+  import interpreter._
+
 
   def queueElements = {
     val queue1 = Queue.create[Int]("q1", maxSize = 10)
@@ -28,9 +31,6 @@ class QueueEffectSpec(implicit ee: ExecutionEnv) extends Specification { def is 
 
     type S = Fx.fx2[QueueOp, Async]
 
-    val interpreter = AsyncFutureInterpreter.create
-    import interpreter._
-
     runQueueAsync(action[S]).runAsyncFuture must be_==(3).await
   }
 
@@ -42,14 +42,10 @@ class QueueEffectSpec(implicit ee: ExecutionEnv) extends Specification { def is 
 
     val add = (1 to 5).toList.traverse(i => enqueue[S, Int](queue1, i))
 
-    val interpreter = AsyncFutureInterpreter.create
-    import interpreter._
-
     val action =
-      runQueueAsync(add >> p.runList).execSafe.runAsyncFuture
+      runQueueAsync(add >> p.take(5).runList).execSafe.runAsyncFuture
 
     action must beRight((1 to 5).toList).await
-    pending
   }
 
 }

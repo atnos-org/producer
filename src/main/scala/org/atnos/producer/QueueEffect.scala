@@ -50,7 +50,7 @@ object QueueEffect {
       def apply[X](tx: QueueOp[X]): Eff[U, X] =
         tx match {
           case Enqueue(queue, v) =>
-            asyncDelay(queue.enqueue(v))
+            asyncFork(queue.enqueue(v))
 
           case Dequeue(queue) =>
             all.async[U, X](SimpleSubscribe(callback => queue.dequeue(callback.asInstanceOf[Callback[Any]])))
