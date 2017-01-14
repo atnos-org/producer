@@ -60,7 +60,7 @@ package object producer {
     def repeat: Producer[R, A] =
       Producer.repeat(p)
 
-    def andFinally(last: Eff[R, Unit])(implicit safe: Safe /= R): Producer[R, A] =
+    def andFinally(last: Eff[R, Unit]): Producer[R, A] =
       p.andFinally(last)
 
   }
@@ -155,7 +155,7 @@ package object producer {
       t(producer).filter(predicate)
   }
 
-  implicit class ProducerResourcesOps[R :_Safe, A](p: Producer[R, A])(implicit s: Safe /= R) {
+  implicit class ProducerResourcesOps[R :_Safe, A](p: Producer[R, A]) {
     def `finally`(e: Eff[R, Unit]): Producer[R, A] =
       p.andFinally(e)
 
@@ -168,7 +168,7 @@ package object producer {
       })
   }
 
-  def bracket[R :_Safe, A, B, C](open: Eff[R, A])(step: A => Producer[R, B])(close: A => Eff[R, C])(implicit s: Safe /= R): Producer[R, B] =
+  def bracket[R :_Safe, A, B, C](open: Eff[R, A])(step: A => Producer[R, B])(close: A => Eff[R, C]): Producer[R, B] =
     Producer[R, B] {
       open flatMap { resource =>
         (step(resource) `finally` close(resource).map(_ => ())).run

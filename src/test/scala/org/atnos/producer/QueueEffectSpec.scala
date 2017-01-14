@@ -14,8 +14,8 @@ class QueueEffectSpec(implicit ee: ExecutionEnv) extends Specification { def is 
  A Producer can be created out of a queue $producerFromQueue
 
 """
-  lazy val interpreter = AsyncFutureInterpreter.create
-  import interpreter._
+  lazy val futures = AsyncFutures.create
+  import futures._
 
 
   def queueElements = {

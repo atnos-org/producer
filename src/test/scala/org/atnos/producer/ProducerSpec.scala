@@ -158,7 +158,7 @@ class ProducerSpec(implicit ee: ExecutionEnv) extends Specification with ScalaCh
   def sequenceFutures = prop { xs: List[Int] =>
     type SF = Fx.fx3[Writer[Int, ?], Safe, Async]
 
-    lazy val async = AsyncFutureInterpreter.fromExecutionContext(ee.executionContext)
+    lazy val async = AsyncFutures.fromExecutionContext(ee.executionContext)
     import async._
 
     def doIt[R :_Safe](implicit async: Async |= R): Producer[R, Int] =
@@ -180,7 +180,7 @@ class ProducerSpec(implicit ee: ExecutionEnv) extends Specification with ScalaCh
     val messages = new ListBuffer[String]
 
     val producer = emitEff[S, Int](protect(xs)).map(x => messages.append(x.toString)).andFinally(protect[S, Unit](messages.append("end")))
-    producer.to(folds.list.into[S]).runSafe.runSafe.run
+    producer.to(folds.list.into[Eff[S, ?]]).runSafe.runSafe.run
 
     messages.toList ==== xs.map(_.toString) :+ "end"
   }
@@ -189,8 +189,9 @@ class ProducerSpec(implicit ee: ExecutionEnv) extends Specification with ScalaCh
     type R = Fx.fx2[Safe, Eval]
     val messages = new ListBuffer[String]
 
-    val sizeFold: Fold[R, Unit, Int] = new Fold[R, Unit, Int] {
+    val sizeFold: Fold[Eff[R, ?], Unit, Int] = new Fold[Eff[R, ?], Unit, Int] {
       type S = Int
+      implicit var monad = EffMonad[R]
       def start = pure(0)
       def fold = (s: S, a: Unit) => s + 1
       def end(s: S) = protect[R, Unit](messages.append("end-fold")).as(s)
@@ -305,10 +306,10 @@ class ProducerSpec(implicit ee: ExecutionEnv) extends Specification with ScalaCh
   }
 
   implicit class ProducerFolds[R :_Safe, A](p: Producer[R, A]) {
-    def to[B](f: Fold[R, A, B]): Eff[R, B] =
+    def to[B](f: Fold[Eff[R, ?], A, B]): Eff[R, B] =
       p.fold[B, f.S](f.start, f.fold, f.end)
 
-    def observe(f: Fold[R, A, Unit]): Producer[R, A] =
+    def observe(f: Fold[Eff[R, ?], A, Unit]): Producer[R, A] =
       producers.observe(p)(f.start, f.fold, f.end)
   }
 

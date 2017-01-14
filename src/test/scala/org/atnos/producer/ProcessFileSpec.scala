@@ -21,8 +21,8 @@ class ProcessFileSpec extends Specification { def is = s2"""
     program[S].execSafe.run must beRight(10000)
   }
 
-  def countWords[R]: Fold[R, String, Int] =
-    fold.fromFoldLeft[R, String, Int](0)((n, l) => n + l.split(" ").size)
+  def countWords[R]: Fold[Eff[R, ?], String, Int] =
+    fold.fromFoldLeft[String, Int](0)((n, l) => n + l.split(" ").size).into[Eff[R, ?]]
 
   type S = Fx.fx1[Safe]
 

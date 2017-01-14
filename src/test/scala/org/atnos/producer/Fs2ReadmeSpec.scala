@@ -55,8 +55,10 @@ val converter: Task[Unit] =
   def resource(path: String) =
     getClass.getClassLoader.getResource(path).toURI.toURL.getFile
 
-  def writeLines[R :_Safe](path: String, encoding: String = "UTF-8"): Fold[R, String, Unit] = new Fold[R, String, Unit] {
+  def writeLines[R :_Safe](path: String, encoding: String = "UTF-8"): Fold[Eff[R, ?], String, Unit] = new Fold[Eff[R, ?], String, Unit] {
     type S = BufferedWriter
+
+    implicit val monad = EffMonad[R]
 
     def start: Eff[R, S] =
       protect[R, BufferedWriter](new BufferedWriter(new OutputStreamWriter(new FileOutputStream(path), encoding)))
@@ -72,10 +74,10 @@ val converter: Task[Unit] =
 object Producerx {
 
   implicit class ProducerFolds[R :_Safe, A](p: Producer[R, A]) {
-    def to[B](f: Fold[R, A, B]): Eff[R, B] =
+    def to[B](f: Fold[Eff[R, ?], A, B]): Eff[R, B] =
       p.fold[B, f.S](f.start, f.fold, f.end)
 
-    def observe(f: Fold[R, A, Unit]): Producer[R, A] =
+    def observe(f: Fold[Eff[R, ?], A, Unit]): Producer[R, A] =
       producers.observe(p)(f.start, f.fold, f.end)
   }
 }
