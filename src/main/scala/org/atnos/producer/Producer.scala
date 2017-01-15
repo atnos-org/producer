@@ -90,28 +90,6 @@ object Producer extends Producers {
       p1 append p2
   }
 
-  implicit def FoldableProducer: Foldable[Producer[NoFx, ?]] = new Foldable[Producer[NoFx, ?]] {
-    def foldLeft[A, B](fa: Producer[NoFx, A], b: B)(f: (B, A) => B): B = {
-      var s = b
-      fa.run.run match {
-        case Done() => Eff.pure(())
-        case One(a) => s = f(s, a); Eff.pure(())
-        case More(as, next) => s = as.foldLeft(s)(f); s = foldLeft(next, s)(f); Eff.pure(())
-      }
-      s
-    }
-
-    def foldRight[A, B](fa: Producer[NoFx, A], lb: Eval[B])(f: (A, Eval[B]) => Eval[B]): Eval[B] = {
-      var s = lb
-      fa.run.run match {
-        case Done() => Eff.pure(())
-        case One(a) => s = s >> f(a, s); Eff.pure(())
-        case More(as, next) => s >> as.foldRight(s)(f) >> foldRight(next, s)(f); Eff.pure(())
-      }
-      s
-    }
-  }
-
   implicit def ProducerMonad[R :_Safe]: Monad[Producer[R, ?]] = new Monad[Producer[R, ?]] {
     def flatMap[A, B](fa: Producer[R, A])(f: A => Producer[R, B]): Producer[R, B] =
       fa.flatMap(f)
