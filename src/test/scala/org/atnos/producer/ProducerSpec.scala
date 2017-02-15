@@ -1,7 +1,9 @@
 package org.atnos.producer
 
 import org.atnos.eff._
+import org.atnos.eff.future._
 import org.atnos.eff.syntax.all._
+import org.atnos.eff.syntax.future._
 import org.atnos.producer.Producer._
 import org.scalacheck._
 import org.specs2._
@@ -22,7 +24,9 @@ import syntax.all._
 
 import scala.collection.mutable.ListBuffer
 
-class ProducerSpec(implicit ee: ExecutionEnv) extends Specification with ScalaCheck with ThrownExpectations { def is = s2"""
+class ProducerSpec(implicit ee: ExecutionEnv) extends Specification with ScalaCheck with ThrownExpectations {
+  def is =
+    s2"""
 
   producers form a monoid with `append` and `empty` $monoid
   producers form a monad with `one` and `flatMap`   $monad
@@ -78,10 +82,18 @@ class ProducerSpec(implicit ee: ExecutionEnv) extends Specification with ScalaCh
     type S = Fx.fx1[Safe]
 
     val messages = new ListBuffer[String]
-    val producer: Producer[S, Int] = emitEff[S, Int](protect { messages.append("input"); list })
-    val start = protect[S, Int] { messages.append("start"); 0 }
-    val f = (a: Int, b: Int) => { messages.append(s"adding $a and $b"); a + b }
-    val end = (s: Int) => protect[S, String] { messages.append("end"); s.toString }
+    val producer: Producer[S, Int] = emitEff[S, Int](protect {
+      messages.append("input"); list
+    })
+    val start = protect[S, Int] {
+      messages.append("start"); 0
+    }
+    val f = (a: Int, b: Int) => {
+      messages.append(s"adding $a and $b"); a + b
+    }
+    val end = (s: Int) => protect[S, String] {
+      messages.append("end"); s.toString
+    }
 
     val result = Producer.fold(producer)(start, f, end).execSafe.run.toOption.get
     result ==== list.foldLeft(0)(_ + _).toString
@@ -151,20 +163,18 @@ class ProducerSpec(implicit ee: ExecutionEnv) extends Specification with ScalaCh
   }.setGen2(Gen.choose(0, 5)).noShrink
 
   def map1 = prop { xs: List[Int] =>
-    val f = (x: Int) => (x+ 1).toString
+    val f = (x: Int) => (x + 1).toString
     emit[S1, Int](xs).map(f).runLog ==== xs.map(f)
   }.setGen(Gen.listOf(Gen.choose(1, 100)))
 
   def sequenceFutures = prop { xs: List[Int] =>
-    type SF = Fx.fx3[Writer[Int, ?], Safe, Async]
+    type SF = Fx.fx3[Writer[Int, ?], Safe, TimedFuture]
 
-    lazy val async = AsyncFutures.fromExecutionContext(ee.executionContext)
-    import async._
+    def doIt[R: _Safe](implicit future: TimedFuture |= R): Producer[R, Int] =
+      sequence[R, TimedFuture, Int](4)(emit(xs.map(x => futureDelay(action(x)))))
 
-    def doIt[R :_Safe](implicit async: Async |= R): Producer[R, Int] =
-      sequence[R, Async, Int](4)(emit(xs.map(x => asyncFork(action(x)))))
-
-    doIt[SF].runLog.runAsyncFuture must be_==(xs).await
+    implicit val es = ee.scheduledExecutorService
+    doIt[SF].runLog.runAsync must be_==(xs).await
   }.noShrink.setGen(Gen.listOfN(3, Gen.choose(20, 300))).set(minTestsOk = 1)
 
   def followed = prop { (xs1: List[Int], xs2: List[Int]) =>
@@ -192,13 +202,16 @@ class ProducerSpec(implicit ee: ExecutionEnv) extends Specification with ScalaCh
     val sizeFold: Fold[Eff[R, ?], Unit, Int] = new Fold[Eff[R, ?], Unit, Int] {
       type S = Int
       implicit var monad = EffMonad[R]
+
       def start = pure(0)
+
       def fold = (s: S, a: Unit) => s + 1
+
       def end(s: S) = protect[R, Unit](messages.append("end-fold")).as(s)
     }
 
     val producer = emitEff[R, String](protect(xs)).map(x => messages.append(x)).andFinally(protect[R, Unit](messages.append("end")))
-    producer.to(sizeFold).runSafe.runEval.run 
+    producer.to(sizeFold).runSafe.runEval.run
 
     messages.toList ==== xs ++ List("end-fold", "end")
   }.setGen(Gen.listOf(Gen.oneOf("a", "b", "c")))
@@ -216,22 +229,22 @@ class ProducerSpec(implicit ee: ExecutionEnv) extends Specification with ScalaCh
    * HELPERS
    */
 
-  type WriterInt[A]    = Writer[Int, A]
+  type WriterInt[A] = Writer[Int, A]
   type WriterOption[A] = Writer[Option[Int], A]
   type WriterString[A] = Writer[String, A]
-  type WriterList[A]   = Writer[List[Int], A]
-  type WriterUnit[A]   = Writer[Unit, A]
+  type WriterList[A] = Writer[List[Int], A]
+  type WriterUnit[A] = Writer[Unit, A]
 
   type S0 = Fx.fx1[Safe]
-  type S  = Fx.fx2[WriterInt, Safe]
+  type S = Fx.fx2[WriterInt, Safe]
   type S1 = Fx.fx2[WriterString, Safe]
   type SL = Fx.fx2[WriterList, Safe]
   type SO = Fx.fx2[WriterOption, Safe]
-  type SU  = Fx.fx2[WriterUnit, Safe]
+  type SU = Fx.fx2[WriterUnit, Safe]
 
-  type ProducerInt          = Producer[Fx1[Safe], Int]
-  type ProducerString       = Producer[Fx1[Safe], String]
-  type ProducerWriterInt    = Producer[Fx.fx2[WriterInt, Safe], Int]
+  type ProducerInt = Producer[Fx1[Safe], Int]
+  type ProducerString = Producer[Fx1[Safe], String]
+  type ProducerWriterInt = Producer[Fx.fx2[WriterInt, Safe], Int]
   type ProducerWriterString = Producer[Fx.fx2[WriterString, Safe], String]
   type ProducerWriterOption = Producer[Fx.fx2[WriterOption, Safe], Option[Int]]
 
@@ -263,14 +276,14 @@ class ProducerSpec(implicit ee: ExecutionEnv) extends Specification with ScalaCh
 
   implicit def ArbitraryProducerInt: Arbitrary[ProducerInt] = Arbitrary {
     for {
-      n  <- Gen.choose(0, 10)
+      n <- Gen.choose(0, 10)
       xs <- Gen.listOfN(n, Gen.choose(1, 30))
     } yield emit[S0, Int](xs)
   }
 
   implicit def ArbitraryProducerWriterInt: Arbitrary[ProducerWriterInt] = Arbitrary {
     for {
-      n  <- Gen.choose(0, 10)
+      n <- Gen.choose(0, 10)
       xs <- Gen.listOfN(n, Gen.choose(1, 30))
     } yield emit[Fx2[WriterInt, Safe], Int](xs)
   }
@@ -305,7 +318,7 @@ class ProducerSpec(implicit ee: ExecutionEnv) extends Specification with ScalaCh
       (i: Option[Int]) => one[Fx.fx2[WriterInt, Safe], Int](3) > one(i.map(_ + 1).getOrElse(0)))
   }
 
-  implicit class ProducerFolds[R :_Safe, A](p: Producer[R, A]) {
+  implicit class ProducerFolds[R: _Safe, A](p: Producer[R, A]) {
     def to[B](f: Fold[Eff[R, ?], A, B]): Eff[R, B] =
       p.fold[B, f.S](f.start, f.fold, f.end)
 
@@ -315,7 +328,7 @@ class ProducerSpec(implicit ee: ExecutionEnv) extends Specification with ScalaCh
 
   implicit class ProducerOperations3[A](p: Producer[Fx1[Safe], A]) {
     def safeToList =
-    p.runList.execSafe.run.toOption.get
+      p.runList.execSafe.run.toOption.get
   }
 
 }

@@ -4,10 +4,12 @@ import java.util.concurrent._
 
 import org.atnos.eff._
 import all._
+import future._
 import SubscribeEffect._
 import cats.implicits._
 
 import scala.collection.mutable.ListBuffer
+import scala.concurrent.Promise
 
 case class Queue[+A](name: String)(val maxSize: Int) {
   private val elements = new ArrayBlockingQueue[Any](maxSize)
@@ -43,17 +45,22 @@ object QueueEffect {
   def dequeue[R :_queue, A](queue: Queue[A]): Eff[R, A] =
     send[QueueOp, R, A](Dequeue(queue))
 
-  def runQueueAsync[R, U, A](e: Eff[R, A])(implicit m: Member.Aux[QueueOp, R, U],
-                                                    a: Async |= U): Eff[U, A] = {
+  def runQueueFuture[R, U, A](e: Eff[R, A])(implicit m: Member.Aux[QueueOp, R, U],
+                                            f: Member[TimedFuture, U]): Eff[U, A] = {
 
     interpret.translate(e)(new Translate[QueueOp, U] {
       def apply[X](tx: QueueOp[X]): Eff[U, X] =
         tx match {
           case Enqueue(queue, v) =>
-            asyncFork(queue.enqueue(v))
+            futureDelay[U, Unit](queue.enqueue(v))
 
           case Dequeue(queue) =>
-            all.async[U, X](SimpleSubscribe(callback => queue.dequeue(callback.asInstanceOf[Callback[Any]])))
+            val promise = Promise[Any]
+            val callback = (ta: Throwable Either Any) => {
+              ta.fold(promise.failure, promise.success); ()
+            }
+
+            futureDelay[U, Any](queue.dequeue(callback)).flatMap(_ => fromFuture(promise.future).asInstanceOf[Eff[U, X]])
         }
     })
   }

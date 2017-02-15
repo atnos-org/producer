@@ -1,5 +1,5 @@
-lazy val effVersion     = "2.3.0"
-lazy val specs2Version  = "3.8.6"
+lazy val effVersion     = "3.0.1"
+lazy val specs2Version  = "3.8.8"
 lazy val origamiVersion = "3.0.0"
 
 libraryDependencies in Global :=
