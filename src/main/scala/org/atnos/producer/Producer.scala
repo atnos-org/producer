@@ -273,21 +273,21 @@ trait Producers {
     producer.flatMap(as => emitSeq(as.toList))
 
   /** accumulate chunks of size n inside More nodes */
-  def chunk[R :_Safe, A](size: Int)(producer: Producer[R, A]): Producer[R, A] = {
-    def emitChunks(es: Vector[A]) =
-      if (es.isEmpty) done[R, A].run
-      else (emit[R, A](es.take(size).toList) append chunk(size)(emit(es.drop(size).toList))).run
-
-    def go(p: Producer[R, A], elements: Vector[A]): Producer[R, A] =
+  def chunk[R :_Safe, A](size: Int)(producer: Producer[R, A]): Producer[R, A] =
+    if (size < 1) producer
+    else
       Producer[R, A](
-        p.run flatMap {
-          case Done() => emitChunks(elements)
-          case One(a) => emitChunks(elements :+ a)
-          case More(as, next) => emitChunks(elements ++ as.toVector)
+        producer.run flatMap {
+          case Done() => pure(Done())
+          case One(a) => pure(One(a))
+          case More(as, next) =>
+            val (first, second) = as.splitAt(size)
+            if (first.isEmpty) chunk(size)(next).run
+            else if (second.isEmpty)
+              (emit(first) append chunk(size)(next)).run
+            else
+              (emit(first) append chunk(size)(emit(second) append next)).run
         })
-
-    go(producer, Vector.empty)
-  }
 
   def sliding[R :_Safe, A](size: Int)(producer: Producer[R, A]): Producer[R, List[A]] = {
 

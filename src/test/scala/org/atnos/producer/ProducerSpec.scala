@@ -93,9 +93,9 @@ class ProducerSpec(implicit ee: ExecutionEnv) extends Specification with ScalaCh
     }
 
     val result = Producer.fold(producer)(start, f, end).execSafe.run.toOption.get
-    result ==== list.foldLeft(0)(_ + _).toString
+    result ==== list.sum.toString
 
-    messages.toList must contain(atLeast("start", "input", "end")).inOrder.when(list.nonEmpty)
+    messages.toList must contain(atLeast("input", "start", "end")).inOrder.when(list.nonEmpty)
 
     "the number of additions are of the same size as the list" ==> {
       // drop 2 to remove start and input, dropRight 1 to remove end
