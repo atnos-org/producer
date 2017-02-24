@@ -1,0 +1,3 @@
+New origami version
+
+ * use `origami` `4.0.0` where the `Fold` class now has a "monadic" `fold` function: `(S, A) => Eff[R, S]`
