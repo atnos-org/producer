@@ -3,6 +3,7 @@ package org.atnos.producer
 import cats._
 import data._
 import cats.implicits._
+import cats.free.Free.foldLeftM
 import org.atnos.eff._
 import org.atnos.eff.all._
 import org.atnos.eff.syntax.all._
@@ -192,33 +193,27 @@ trait Producers {
       case a :: as  => oneOrMore(a, as).run
     })
 
-  def fold[R :_Safe, A, B, S](producer: Producer[R, A])(start: Eff[R, S], f: (S, A) => S, end: S => Eff[R, B]): Eff[R, B] =
-    start.flatMap { init =>
-      def go(p: Producer[R, A], s: S): Eff[R, B] =
-        p.run flatMap {
-          case Done() => end(s)
-          case One(a) => end(f(s, a))
-          case More(as, next) => go(next, as.foldLeft(s)(f))
-        }
-
-      go(producer, init)
+  def fold[R :_Safe, A, B, S](producer: Producer[R, A])(start: Eff[R, S], f: (S, A) => Eff[R, S], end: S => Eff[R, B]): Eff[R, B] = {
+    producer.run flatMap {
+      case Done() => start.flatMap(end)
+      case One(a) => start.flatMap(s1 => f(s1, a).flatMap(end))
+      case More(as, next) => start.flatMap(s1 => foldLeftM(as, s1)(f).flatMap(s => fold(next)(pure(s), f, end)))
     }
+  }
 
-  def observe[R :_Safe, A, S](producer: Producer[R, A])(start: Eff[R, S], f: (S, A) => S, end: S => Eff[R, Unit]): Producer[R, A] =
-    Producer[R, A](start flatMap { init =>
-      def go(p: Producer[R, A], s: S): Producer[R, A] =
-        Producer[R, A] {
-          p.run flatMap {
-            case Done() => end(s) >> done[R, A].run
-            case One(a) => end(s) >> one[R, A](a).run
-            case More(as, next) =>
-              val newS = as.foldLeft(s)(f)
-              (emit(as) append go(next, newS)).run
-          }
+  def observe[R :_Safe, A, S](producer: Producer[R, A])(start: Eff[R, S], f: (S, A) => Eff[R, S], end: S => Eff[R, Unit]): Producer[R, A] = {
+    def go(p: Producer[R, A], s: Eff[R, S]): Producer[R, A] =
+      Producer[R, A] {
+        p.run flatMap {
+          case Done() => s.flatMap(end) >> done[R, A].run
+          case One(a) => s.flatMap(end) >> one[R, A](a).run
+          case More(as, next) =>
+            val newS = s.flatMap(s1 => foldLeftM(as, s1)(f))
+            (emit(as) append go(next, newS)).run
         }
-
-      go(producer, init).run
-    })
+      }
+      Producer[R, A](go(producer, start).run)
+  }
 
   def runLast[R :_Safe, A](producer: Producer[R, A]): Eff[R, Option[A]] =
     producer.run flatMap {
@@ -228,7 +223,7 @@ trait Producers {
     }
 
   def runList[R :_Safe, A](producer: Producer[R, A]): Eff[R, List[A]] =
-    producer.fold(pure(Vector[A]()), (vs: Vector[A], a: A) => vs :+ a, (vs:Vector[A]) => pure(vs.toList))
+    producer.fold(pure(Vector[A]()), (vs: Vector[A], a: A) => pure(vs :+ a), (vs:Vector[A]) => pure(vs.toList))
 
   def collect[R :_Safe, A](producer: Producer[R, A])(implicit m: Member[Writer[A, ?], R]): Eff[R, Unit] =
     producer.run flatMap {
@@ -279,16 +274,16 @@ trait Producers {
 
   /** accumulate chunks of size n inside More nodes */
   def chunk[R :_Safe, A](size: Int)(producer: Producer[R, A]): Producer[R, A] = {
+    def emitChunks(es: Vector[A]) =
+      if (es.isEmpty) done[R, A].run
+      else (emit[R, A](es.take(size).toList) append chunk(size)(emit(es.drop(size).toList))).run
+
     def go(p: Producer[R, A], elements: Vector[A]): Producer[R, A] =
       Producer[R, A](
         p.run flatMap {
-          case Done() => emit[R, A](elements.toList).run
-          case One(a) => emit[R, A]((elements :+ a).toList).run
-
-          case More(as, next) =>
-            val es = elements ++ as
-            if (es.size == size) (emit[R, A](es.toList) append go(next, Vector.empty)).run
-            else                 go(next, es).run
+          case Done() => emitChunks(elements)
+          case One(a) => emitChunks(elements :+ a)
+          case More(as, next) => emitChunks(elements ++ as.toVector)
         })
 
     go(producer, Vector.empty)

@@ -21,12 +21,9 @@ import all._
 import org.atnos.origami._
 import org.atnos.origami.folds._
 import syntax.all._
-
 import scala.collection.mutable.ListBuffer
 
-class ProducerSpec(implicit ee: ExecutionEnv) extends Specification with ScalaCheck with ThrownExpectations {
-  def is =
-    s2"""
+class ProducerSpec(implicit ee: ExecutionEnv) extends Specification with ScalaCheck with ThrownExpectations { def is = s2"""
 
   producers form a monoid with `append` and `empty` $monoid
   producers form a monad with `one` and `flatMap`   $monad
@@ -88,7 +85,7 @@ class ProducerSpec(implicit ee: ExecutionEnv) extends Specification with ScalaCh
     val start = protect[S, Int] {
       messages.append("start"); 0
     }
-    val f = (a: Int, b: Int) => {
+    val f = (a: Int, b: Int) => protect {
       messages.append(s"adding $a and $b"); a + b
     }
     val end = (s: Int) => protect[S, String] {
@@ -205,7 +202,7 @@ class ProducerSpec(implicit ee: ExecutionEnv) extends Specification with ScalaCh
 
       def start = pure(0)
 
-      def fold = (s: S, a: Unit) => s + 1
+      def fold = (s: S, a: Unit) => pure(s + 1)
 
       def end(s: S) = protect[R, Unit](messages.append("end-fold")).as(s)
     }
@@ -316,14 +313,6 @@ class ProducerSpec(implicit ee: ExecutionEnv) extends Specification with ScalaCh
       (i: Option[Int]) => Producer.empty[Fx.fx2[WriterInt, Safe], Int],
       (i: Option[Int]) => one[Fx.fx2[WriterInt, Safe], Int](i.getOrElse(-2)),
       (i: Option[Int]) => one[Fx.fx2[WriterInt, Safe], Int](3) > one(i.map(_ + 1).getOrElse(0)))
-  }
-
-  implicit class ProducerFolds[R: _Safe, A](p: Producer[R, A]) {
-    def to[B](f: Fold[Eff[R, ?], A, B]): Eff[R, B] =
-      p.fold[B, f.S](f.start, f.fold, f.end)
-
-    def observe(f: Fold[Eff[R, ?], A, Unit]): Producer[R, A] =
-      producers.observe(p)(f.start, f.fold, f.end)
   }
 
   implicit class ProducerOperations3[A](p: Producer[Fx1[Safe], A]) {

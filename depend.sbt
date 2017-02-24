@@ -1,6 +1,6 @@
 lazy val effVersion     = "3.0.3"
 lazy val specs2Version  = "3.8.8"
-lazy val origamiVersion = "3.1.0"
+lazy val origamiVersion = "4.0.0"
 
 libraryDependencies in Global :=
   eff    ++
@@ -17,7 +17,7 @@ lazy val eff = Seq(
 
 lazy val origami = Seq(
   "org.atnos" %% "origami-core",
-  "org.atnos" %% "origami-lib").map(_ % origamiVersion % "test")
+  "org.atnos" %% "origami-lib").map(_ % origamiVersion)
 
 lazy val specs2 = Seq(
     "org.specs2" %% "specs2-core"

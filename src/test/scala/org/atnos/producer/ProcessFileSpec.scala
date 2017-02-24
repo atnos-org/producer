@@ -6,7 +6,6 @@ import org.atnos.eff._
 import all._
 import org.atnos.eff.syntax.all._
 import org.atnos.origami._
-import Producerx._
 
 class ProcessFileSpec extends Specification { def is = s2"""
 

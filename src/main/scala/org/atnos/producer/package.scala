@@ -5,6 +5,7 @@ import cats.implicits._
 import org.atnos.eff._
 import org.atnos.eff.all._
 import org.atnos.eff.syntax.safe._
+import org.atnos.origami.Fold
 
 package object producer {
 
@@ -36,17 +37,23 @@ package object producer {
     def into[U](implicit intoPoly: IntoPoly[R, U], s: _Safe[U]): Producer[U, A] =
       Producer.into(p)
 
-    def fold[B, S](start: Eff[R, S], f: (S, A) => S, end: S => Eff[R, B]): Eff[R, B] =
+    def fold[B, S](start: Eff[R, S], f: (S, A) => Eff[R, S], end: S => Eff[R, B]): Eff[R, B] =
       Producer.fold(p)(start, f, end)
 
+    def to[B](f: Fold[Eff[R, ?], A, B]): Eff[R, B] =
+      fold[B, f.S](f.start, f.fold, f.end)
+
     def foldLeft[S](init: S)(f: (S, A) => S): Eff[R, S] =
-      Producer.fold(p)(Eff.pure(init), f, (s: S) => pure(s))
+      Producer.fold(p)(Eff.pure(init), (s: S, a: A) => pure(f(s, a)), (s: S) => pure(s))
 
     def foldMonoid(implicit m: Monoid[A]): Eff[R, A] =
       foldLeft(Monoid[A].empty)(Monoid[A].combine)
 
-    def observe[S](start: Eff[R, S], f: (S, A) => S, end: S => Eff[R, Unit]): Producer[R, A] =
+    def observe[S](start: Eff[R, S], f: (S, A) => Eff[R, S], end: S => Eff[R, Unit]): Producer[R, A] =
       Producer.observe(p)(start, f, end)
+
+    def observe(f: Fold[Eff[R, ?], A, Unit]): Producer[R, A] =
+      observe[f.S](f.start, f.fold, f.end)
 
     def runLast: Eff[R, Option[A]] =
       Producer.runLast(p)

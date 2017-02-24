@@ -10,7 +10,6 @@ import cats.Eval
 import org.atnos.eff.syntax.all._
 import producers._
 import org.atnos.origami._
-import Producerx._
 
 class Fs2ReadmeSpec extends Specification { def is = s2"""
 
@@ -63,22 +62,10 @@ val converter: Task[Unit] =
     def start: Eff[R, S] =
       protect[R, BufferedWriter](new BufferedWriter(new OutputStreamWriter(new FileOutputStream(path), encoding)))
 
-    def fold = (s: S, line: String) => { s.write(line); s }
+    def fold = (s: S, line: String) => protect { s.write(line); s }
 
     def end(s: S): Eff[R, Unit] =
       protect[R, Unit](s.close)
-  }
-}
-
-
-object Producerx {
-
-  implicit class ProducerFolds[R :_Safe, A](p: Producer[R, A]) {
-    def to[B](f: Fold[Eff[R, ?], A, B]): Eff[R, B] =
-      p.fold[B, f.S](f.start, f.fold, f.end)
-
-    def observe(f: Fold[Eff[R, ?], A, Unit]): Producer[R, A] =
-      producers.observe(p)(f.start, f.fold, f.end)
   }
 }
 
