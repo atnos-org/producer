@@ -1,6 +1,6 @@
 package org.atnos
 
-import cats.{Eval, Monoid, Semigroup}
+import cats.{Eval, Id, Monoid, Semigroup}
 import cats.implicits._
 import org.atnos.eff._
 import org.atnos.eff.all._
@@ -42,6 +42,9 @@ package object producer {
 
     def to[B](f: Fold[Eff[R, ?], A, B]): Eff[R, B] =
       fold[B, f.S](f.start, f.fold, f.end)
+
+    def fold[B](f: Fold[Id, A, B]): Eff[R, B] =
+      to(f.into[Eff[R, ?]])
 
     def foldLeft[S](init: S)(f: (S, A) => S): Eff[R, S] =
       Producer.fold(p)(Eff.pure(init), (s: S, a: A) => pure(f(s, a)), (s: S) => pure(s))
