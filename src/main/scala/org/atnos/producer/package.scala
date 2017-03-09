@@ -1,6 +1,6 @@
 package org.atnos
 
-import cats.{Eval, Id, Monoid, Semigroup}
+import cats._
 import cats.implicits._
 import org.atnos.eff._
 import org.atnos.eff.all._
@@ -9,168 +9,176 @@ import org.atnos.origami.Fold
 
 package object producer {
 
-  type Transducer[R, A, B] = Producer[R, A] => Producer[R, B]
+  type Transducer[M[_], A, B] = Producer[M, A] => Producer[M, B]
+
+  type ProducerFx[R, A] = Producer[Eff[R, ?], A]
 
   object producers extends Producers
 
   object transducers extends Transducers
 
-  implicit class ProducerOps[R :_Safe, A](p: Producer[R, A]) {
-    def filter(f: A => Boolean): Producer[R, A] =
+  implicit class ProducerOps[M[_] : MonadDefer, A](p: Producer[M, A]) {
+    def filter(f: A => Boolean): Producer[M, A] =
       Producer.filter(p)(f)
 
-    def sliding(n: Int): Producer[R, List[A]] =
+    def sliding(n: Int): Producer[M, List[A]] =
       Producer.sliding(n)(p)
 
-    def chunk(n: Int): Producer[R, A] =
+    def chunk(n: Int): Producer[M, A] =
       Producer.chunk(n)(p)
 
-    def >(p2: Producer[R, A]): Producer[R, A] =
+    def >(p2: Producer[M, A]): Producer[M, A] =
       p append p2
 
-    def |>[B](t: Transducer[R, A, B]): Producer[R, B] =
+    def |>[B](t: Transducer[M, A, B]): Producer[M, B] =
       pipe(t)
 
-    def pipe[B](t: Transducer[R, A, B]): Producer[R, B] =
+    def pipe[B](t: Transducer[M, A, B]): Producer[M, B] =
       Producer.pipe(p, t)
 
-    def into[U](implicit intoPoly: IntoPoly[R, U], s: _Safe[U]): Producer[U, A] =
+    def fold[B, S](start: M[S], f: (S, A) => M[S], end: S => M[B]): M[B] =
+      Producer.fold(p)(start, f, end)
+
+    def to[B](f: Fold[M, A, B]): M[B] =
+      fold[B, f.S](f.start, f.fold, f.end)
+
+    def foldLeft[S](init: S)(f: (S, A) => S): M[S] =
+      Producer.fold(p)(MonadDefer[M].pure(init), (s: S, a: A) => MonadDefer[M].pure(f(s, a)), (s: S) => MonadDefer[M].pure(s))
+
+    def foldMonoid(implicit m: Monoid[A]): M[A] =
+      foldLeft(Monoid[A].empty)(Monoid[A].combine)
+
+    def observe[S](start: M[S], f: (S, A) => M[S], end: S => M[Unit]): Producer[M, A] =
+      Producer.observe(p)(start, f, end)
+
+    def observe(f: Fold[M, A, Unit]): Producer[M, A] =
+      Producer.observe(p)(f.start, f.fold, f.end)
+
+    def runLast: M[Option[A]] =
+      Producer.runLast(p)
+
+    def drain: M[Unit] =
+      Producer.runLast(p).void
+
+    def runList: M[List[A]] =
+      Producer.runList(p)
+
+    def repeat: Producer[M, A] =
+      Producer.repeat(p)
+
+  }
+
+  implicit class ProducerEffOps[R :_Safe, A](p: Producer[Eff[R, ?], A]) {
+    def into[U](implicit intoPoly: IntoPoly[R, U], s: _Safe[U]): Producer[Eff[U, ?], A] =
       Producer.into(p)
+
+    def fold[B](f: Fold[Id, A, B]): Eff[R, B] =
+      p.to(f.into[Eff[R, ?]])
 
     def fold[B, S](start: Eff[R, S], f: (S, A) => Eff[R, S], end: S => Eff[R, B]): Eff[R, B] =
       Producer.fold(p)(start, f, end)
 
-    def to[B](f: Fold[Eff[R, ?], A, B]): Eff[R, B] =
-      fold[B, f.S](f.start, f.fold, f.end)
-
-    def fold[B](f: Fold[Id, A, B]): Eff[R, B] =
-      to(f.into[Eff[R, ?]])
-
-    def foldLeft[S](init: S)(f: (S, A) => S): Eff[R, S] =
-      Producer.fold(p)(Eff.pure(init), (s: S, a: A) => pure(f(s, a)), (s: S) => pure(s))
-
-    def foldMonoid(implicit m: Monoid[A]): Eff[R, A] =
-      foldLeft(Monoid[A].empty)(Monoid[A].combine)
-
-    def observe[S](start: Eff[R, S], f: (S, A) => Eff[R, S], end: S => Eff[R, Unit]): Producer[R, A] =
-      Producer.observe(p)(start, f, end)
-
-    def observe(f: Fold[Eff[R, ?], A, Unit]): Producer[R, A] =
-      observe[f.S](f.start, f.fold, f.end)
-
-    def runLast: Eff[R, Option[A]] =
-      Producer.runLast(p)
-
-    def drain: Eff[R, Unit] =
-      Producer.runLast(p).as(())
-
-    def runList: Eff[R, List[A]] =
-      Producer.runList(p)
-
-    def repeat: Producer[R, A] =
-      Producer.repeat(p)
-
-    def andFinally(last: Eff[R, Unit]): Producer[R, A] =
-      p.andFinally(last)
-
+    def andFinally(last: Eff[R, Unit]): Producer[Eff[R, ?], A] =
+      Producer(p.run.addLast(last))
   }
 
-  implicit class ProducerListOps[R :_Safe, A](p: Producer[R, List[A]]) {
-    def flattenList: Producer[R, A] =
-      Producer.flattenList(p)
-  }
-
-  implicit class ProducerSeqOps[R :_Safe, A](p: Producer[R, Seq[A]]) {
-    def flattenSeq: Producer[R, A] =
-      Producer.flattenSeq(p)
-  }
-
-  implicit class ProducerFlattenOps[R :_Safe, A](p: Producer[R, Producer[R, A]]) {
-    def flatten: Producer[R, A] =
-      Producer.flatten(p)
-  }
-
-  implicit class ProducerEffOps[R :_Safe, A](p: Producer[R, Eff[R, A]]) {
-    def sequence[F[_]](n: Int)(implicit f: F |= R): Producer[R, A] =
+  implicit class ProducerEffSequenceOps[R :_Safe, A](p: Producer[Eff[R, ?], Eff[R, A]]) {
+    def sequence[F[_]](n: Int)(implicit f: F |= R): Producer[Eff[R, ?], A] =
       Producer.sequence[R, F, A](n)(p)
   }
 
-  implicit class ProducerTransducerOps[R :_Safe, A](p: Producer[R, A]) {
-    def receiveOr[B](f: A => Producer[R, B])(or: =>Producer[R, B]): Producer[R, B] =
-      p |> transducers.receiveOr(f)(or)
-
-    def receiveOption[B]: Producer[R, Option[A]] =
-      p |> transducers.receiveOption
-
-    def drop(n: Int): Producer[R, A] =
-      p |> transducers.drop(n)
-
-    def dropRight(n: Int): Producer[R, A] =
-      p |> transducers.dropRight(n)
-
-    def take(n: Int): Producer[R, A] =
-      p |> transducers.take(n)
-
-    def takeWhile(f: A => Boolean): Producer[R, A] =
-      p |> transducers.takeWhile(f)
-
-    def zipWithPrevious: Producer[R, (Option[A], A)] =
-      p |> transducers.zipWithPrevious
-
-    def zipWithNext: Producer[R, (A, Option[A])] =
-      p |> transducers.zipWithNext
-
-    def zipWithPreviousAndNext: Producer[R, (Option[A], A, Option[A])] =
-      p |> transducers.zipWithPreviousAndNext
-
-    def zipWithIndex: Producer[R, (A, Int)] =
-      p |> transducers.zipWithIndex
-
-     def intersperse(a: A): Producer[R, A] =
-       p |> transducers.intersperse(a: A)
-
-    def first: Producer[R, A] =
-      p |> transducers.first
-
-    def last: Producer[R, A] =
-      p |> transducers.last
-
-    def scan[B](start: B)(f: (B, A) => B): Producer[R, B] =
-      p |> transducers.scan(start)(f)
-
-    def scan1(f: (A, A) => A): Producer[R, A] =
-      p |> transducers.scan1(f)
-
-    def reduce(f: (A, A) => A): Producer[R, A] =
-      p |> transducers.reduce(f)
-
-    def reduceSemigroup(implicit semi: Semigroup[A]): Producer[R, A] =
-      p |> transducers.reduceSemigroup
-
-    def reduceMonoid(implicit monoid: Monoid[A]): Producer[R, A] =
-      p |> transducers.reduceMonoid
-
-    def reduceMap[B : Monoid](f: A => B): Producer[R, B] =
-      p |> transducers.reduceMap[R, A, B](f)
-
-    def mapEval[B](f: A => Eff[R, B]): Producer[R, B] =
-      p |> transducers.mapEval[R, A, B](f)
+  implicit class ProducerListOps[M[_] : MonadDefer, A](p: Producer[M, List[A]]) {
+    def flattenList: Producer[M, A] =
+      Producer.flattenList(p)
   }
 
-  implicit class TransducerOps[R :_Safe, A, B](t: Transducer[R, A, B]) {
-    def |>[C](next: Transducer[R, B, C]): Transducer[R, A, C] =
-      (p: Producer[R, A]) => next(t(p))
+  implicit class ProducerSeqOps[M[_] : MonadDefer, A](p: Producer[M, Seq[A]]) {
+    def flattenSeq: Producer[M, A] =
+      Producer.flattenSeq(p)
+  }
 
-    def filter(predicate: B => Boolean): Transducer[R, A, B] = (producer: Producer[R, A]) =>
+  implicit class ProducerFlattenOps[M[_] : MonadDefer, A](p: Producer[M, Producer[M, A]]) {
+    def flatten: Producer[M, A] =
+      Producer.flatten(p)
+  }
+
+  implicit class ProducerTransducerOps[M[_] : MonadDefer, A](p: Producer[M, A]) {
+    def receiveOr[B](f: A => Producer[M, B])(or: =>Producer[M, B]): Producer[M, B] =
+      p |> transducers.receiveOr(f)(or)
+
+    def receiveOption[B]: Producer[M, Option[A]] =
+      p |> transducers.receiveOption
+
+    def drop(n: Int): Producer[M, A] =
+      p |> transducers.drop(n)
+
+    def dropRight(n: Int): Producer[M, A] =
+      p |> transducers.dropRight(n)
+
+    def take(n: Int): Producer[M, A] =
+      p |> transducers.take(n)
+
+    def takeWhile(f: A => Boolean): Producer[M, A] =
+      p |> transducers.takeWhile(f)
+
+    def zipWithPrevious: Producer[M, (Option[A], A)] =
+      p |> transducers.zipWithPrevious
+
+    def zipWithNext: Producer[M, (A, Option[A])] =
+      p |> transducers.zipWithNext
+
+    def zipWithPreviousAndNext: Producer[M, (Option[A], A, Option[A])] =
+      p |> transducers.zipWithPreviousAndNext
+
+    def zipWithIndex: Producer[M, (A, Int)] =
+      p |> transducers.zipWithIndex
+
+     def intersperse(a: A): Producer[M, A] =
+       p |> transducers.intersperse(a: A)
+
+    def first: Producer[M, A] =
+      p |> transducers.first
+
+    def last: Producer[M, A] =
+      p |> transducers.last
+
+    def scan[B](start: B)(f: (B, A) => B): Producer[M, B] =
+      p |> transducers.scan(start)(f)
+
+    def scan1(f: (A, A) => A): Producer[M, A] =
+      p |> transducers.scan1(f)
+
+    def reduce(f: (A, A) => A): Producer[M, A] =
+      p |> transducers.reduce(f)
+
+    def reduceSemigroup(implicit semi: Semigroup[A]): Producer[M, A] =
+      p |> transducers.reduceSemigroup
+
+    def reduceMonoid(implicit monoid: Monoid[A]): Producer[M, A] =
+      p |> transducers.reduceMonoid
+
+    def reduceMap[B : Monoid](f: A => B): Producer[M, B] =
+      p |> transducers.reduceMap[M, A, B](f)
+
+    def mapEval[B](f: A => M[B]): Producer[M, B] =
+      p |> transducers.mapEval[M, A, B](f)
+  }
+
+  implicit class TransducerOps[M[_] : MonadDefer, A, B](t: Transducer[M, A, B]) {
+    def |>[C](next: Transducer[M, B, C]): Transducer[M, A, C] =
+      (p: Producer[M, A]) => next(t(p))
+
+    def filter(predicate: B => Boolean): Transducer[M, A, B] = (producer: Producer[M, A]) =>
       t(producer).filter(predicate)
   }
 
-  implicit class ProducerResourcesOps[R :_Safe, A](p: Producer[R, A]) {
-    def `finally`(e: Eff[R, Unit]): Producer[R, A] =
+  implicit class ProducerResourcesOps[R :_Safe, A](p: Producer[Eff[R, ?], A]) {
+
+    def `finally`(e: Eff[R, Unit]): Producer[Eff[R, ?], A] =
       p.andFinally(e)
 
-    def attempt: Producer[R, Throwable Either A] =
-      Producer[R, Throwable Either A](SafeInterpretation.attempt(p.run) map {
+    def attempt: Producer[Eff[R, ?], Throwable Either A] =
+      Producer[Eff[R, ?], Throwable Either A](SafeInterpretation.attempt(p.run) map {
         case Right(Done()) => Done()
         case Right(One(a)) => One(Either.right(a))
         case Right(More(as, next)) => More(as.map(Either.right), next.map(Either.right))
@@ -178,10 +186,12 @@ package object producer {
       })
   }
 
-  def bracket[R :_Safe, A, B, C](open: Eff[R, A])(step: A => Producer[R, B])(close: A => Eff[R, C]): Producer[R, B] =
-    Producer[R, B] {
+  def bracket[R :_Safe, A, B, C](open: Eff[R, A])(step: A => Producer[Eff[R, ?], B])(close: A => Eff[R, C]): Producer[Eff[R, ?], B] = {
+
+    Producer[Eff[R, ?], B] {
       open flatMap { resource =>
         (step(resource) `finally` close(resource).map(_ => ())).run
       }
     }
+  }
 }

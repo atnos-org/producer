@@ -29,7 +29,7 @@ class FoldSpec extends Specification { def is = s2"""
       fromSink[ES, Int](i => protect(messages.append(s"sink $i")))
 
     val result: Eff[S, Unit] =
-      emit((1 to 3).toList).
+      emit[ES, Int]((1 to 3).toList).
         chunk(1).
         map(i => { messages.append(s"evaluated $i"); i }).
         to(f)

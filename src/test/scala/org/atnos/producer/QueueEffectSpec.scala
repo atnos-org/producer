@@ -15,8 +15,8 @@ class QueueEffectSpec(implicit ee: ExecutionEnv) extends Specification { def is 
  A Producer can be created out of a queue $producerFromQueue
 
 """
-  implicit val es = ee.scheduledExecutorService
 
+  implicit val es = ExecutorServices.schedulerFromScheduledExecutorService(ee.scheduledExecutorService)
 
   def queueElements = {
     val queue1 = Queue.create[Int]("q1", maxSize = 10)
@@ -38,7 +38,9 @@ class QueueEffectSpec(implicit ee: ExecutionEnv) extends Specification { def is 
     val queue1 = Queue.create[Int]("q1", maxSize = 10)
 
     type S = Fx.fx3[QueueOp, TimedFuture, Safe]
-    val p = Producer.repeatEval[S, Int](dequeue(queue1))
+    type ES[A] = Eff[S, A]
+
+    val p = Producer.repeatEval[ES, Int](dequeue(queue1))
 
     val add = (1 to 5).toList.traverse(i => enqueue[S, Int](queue1, i))
 
