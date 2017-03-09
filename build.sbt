@@ -171,3 +171,16 @@ def si2712Dependency(scalaVersion: String) =
     Seq(compilerPlugin("com.milessabin" % ("si2712fix-plugin_"+scalaVersion) % "1.2.0"))
   else
     Seq()
+
+ghreleaseRepoOrg := "atnos-org"
+ghreleaseRepoName := "producer"
+
+ghreleaseNotes := { tagName: TagName =>
+  // find the corresponding release notes
+  val notesFilePath = s"notes/${tagName.replace("PRODUCER-", "")}.markdown"
+  try io.Source.fromFile(notesFilePath).mkString
+  catch { case t: Throwable => throw new Exception(s"$notesFilePath not found") }
+}
+
+// just upload the notes
+ghreleaseAssets := Seq()
