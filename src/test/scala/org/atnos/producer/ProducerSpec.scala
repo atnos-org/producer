@@ -79,7 +79,7 @@ class ProducerSpec(implicit ee: ExecutionEnv) extends Specification with ScalaCh
     type S = Fx.fx1[Safe]
 
     val messages = new ListBuffer[String]
-    val producer: Producer[S, Int] = emitEff[S, Int](protect {
+    val producer: Producer[S, Int] = emitEval[S, Int](protect {
       messages.append("input"); list
     })
     val start = protect[S, Int] {
@@ -186,7 +186,7 @@ class ProducerSpec(implicit ee: ExecutionEnv) extends Specification with ScalaCh
     type S = Fx.fx2[Safe, Safe]
     val messages = new ListBuffer[String]
 
-    val producer = emitEff[S, Int](protect(xs)).map(x => messages.append(x.toString)).andFinally(protect[S, Unit](messages.append("end")))
+    val producer = emitEval[S, Int](protect(xs)).map(x => messages.append(x.toString)).andFinally(protect[S, Unit](messages.append("end")))
     producer.to(folds.list.into[Eff[S, ?]]).runSafe.runSafe.run
 
     messages.toList ==== xs.map(_.toString) :+ "end"
@@ -207,7 +207,7 @@ class ProducerSpec(implicit ee: ExecutionEnv) extends Specification with ScalaCh
       def end(s: S) = protect[R, Unit](messages.append("end-fold")).as(s)
     }
 
-    val producer = emitEff[R, String](protect(xs)).map(x => messages.append(x)).andFinally(protect[R, Unit](messages.append("end")))
+    val producer = emitEval[R, String](protect(xs)).map(x => messages.append(x)).andFinally(protect[R, Unit](messages.append("end")))
     producer.to(sizeFold).runSafe.runEval.run
 
     messages.toList ==== xs ++ List("end-fold", "end")

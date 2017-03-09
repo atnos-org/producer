@@ -75,7 +75,7 @@ class TransducerSpec extends Specification with ScalaCheck { def is = s2"""
   def takeException = prop { n: Int =>
     type R = Fx.fx2[WriterInt, Safe]
 
-    val producer = emit[R, Int](List(1)) append emitEff[R, Int](protect { throw new Exception("boom"); List(2) })
+    val producer = emit[R, Int](List(1)) append emitEval[R, Int](protect { throw new Exception("boom"); List(2) })
     (producer.take(1)).runLog ==== List(1)
   }
 
@@ -144,7 +144,7 @@ class TransducerSpec extends Specification with ScalaCheck { def is = s2"""
       (protect(s"$i and sum: $sum"), sum + i)
     }
 
-    t(emit[S, Int](xs)).flatMap(n => oneEff(n)).safeToList ==== (xs zip xs.scanLeft(0)(_ + _)).map { case (i, s) => s"$i and sum: $s" }
+    t(emit[S, Int](xs)).flatMap(n => oneEval(n)).safeToList ==== (xs zip xs.scanLeft(0)(_ + _)).map { case (i, s) => s"$i and sum: $s" }
   }
 
   def producerStateTransducer = prop { xs: List[Int] =>
