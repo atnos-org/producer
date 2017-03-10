@@ -7,6 +7,7 @@ import org.atnos.eff.syntax.all._
 import Producer._
 import cats.data.State
 import cats.implicits._
+import org.atnos.eff.safe._Safe
 
 trait Transducers {
 
@@ -14,13 +15,73 @@ trait Transducers {
     (p: Producer[M, A]) => p
 
   def filter[M[_] : MonadDefer, A, B](f: A => Boolean): Transducer[M, A, A] =
-    (p: Producer[M, A]) => Producer.filter(p)(f)
+    (p: Producer[M, A]) =>
+    Producer(p.run flatMap {
+      case Done() => done.run
+      case One(a) => MonadDefer[M].delay(a).as(if (f(a)) One(a) else Done())
+      case More(as, next) =>
+        as filter f match {
+          case Nil => next.filter(f).run
+          case a :: rest => (oneOrMore(a, rest) append next.filter(f)).run
+        }
+    })
 
   def receive[M[_] : MonadDefer, A, B](f: A => Producer[M, B]): Transducer[M, A, B] =
     (p: Producer[M, A]) => p.flatMap(f)
 
   def transducer[M[_] : MonadDefer, A, B](f: A => B): Transducer[M, A, B] =
     (p: Producer[M, A]) => p.map(f)
+
+  def flatten[M[_] : MonadDefer, A]: Transducer[M, Producer[M, A], A] = (p: Producer[M, Producer[M, A]]) =>
+    Producer(p.run flatMap {
+      case Done() => done.run
+      case One(p1) => p1.run
+      case More(ps, next) => (Producer.flattenProducers(ps) append flatten.apply(next)).run
+    })
+
+  def flattenSeq[M[_] : MonadDefer, A]: Transducer[M, Seq[A], A] = (p: Producer[M, Seq[A]]) =>
+    p.flatMap(as => emitSeq(as.toList))
+
+  /** accumulate chunks of size n inside More nodes */
+  def chunk[M[_] : MonadDefer, A](size: Int): Transducer[M, A, A] = (p: Producer[M, A]) =>
+    if (size < 1) p
+    else
+      Producer[M, A](
+        p.run flatMap {
+          case Done() => MonadDefer[M].pure(Done())
+          case One(a) => MonadDefer[M].pure(One(a))
+          case More(as, next) =>
+            val (first, second) = as.splitAt(size)
+            if (first.isEmpty) chunk(size).apply(next).run
+            else if (second.isEmpty)
+              (emit(first) append chunk(size).apply(next)).run
+            else
+              (emit(first) append chunk(size).apply(emit(second) append next)).run
+        })
+
+  def sliding[M[_] : MonadDefer, A](size: Int): Transducer[M, A, List[A]] = (p: Producer[M, A]) => {
+
+    def go(p: Producer[M, A], elements: Vector[A]): Producer[M, List[A]] =
+      Producer[M, List[A]](
+        peek(p).flatMap {
+          case (Some(a), as) =>
+            val es = elements :+ a
+            if (es.size == size) (one(es.toList) append go(as, Vector.empty)).run
+            else                 go(as, es).run
+
+          case (None, _) =>
+            one(elements.toList).run
+        })
+
+    go(p, Vector.empty)
+  }
+
+  def flattenList[M[_] : MonadDefer, A]: Transducer[M, List[A], A] = (p: Producer[M, List[A]]) =>
+    p.flatMap(emit[M, A])
+
+  def sequence[R :_Safe, F[_], A](n: Int): Transducer[Eff[R, ?], Eff[R, A], A] = (p: ProducerFx[R, Eff[R, A]]) =>
+    sliding[Eff[R, ?], Eff[R, A]](n).apply(p).flatMap { actions => emitEval(Eff.sequenceA(actions)) }
+
 
   def producerState[M[_] : MonadDefer, A, B, S](start: S, last: Option[S => Producer[M, B]] = None)(f: (A, S) => (Producer[M, B], S)): Transducer[M, A, B] =
     (producer: Producer[M, A]) => {

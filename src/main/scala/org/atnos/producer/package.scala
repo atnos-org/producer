@@ -18,15 +18,6 @@ package object producer {
   object transducers extends Transducers
 
   implicit class ProducerOps[M[_] : MonadDefer, A](p: Producer[M, A]) {
-    def filter(f: A => Boolean): Producer[M, A] =
-      Producer.filter(p)(f)
-
-    def sliding(n: Int): Producer[M, List[A]] =
-      Producer.sliding(n)(p)
-
-    def chunk(n: Int): Producer[M, A] =
-      Producer.chunk(n)(p)
-
     def >(p2: Producer[M, A]): Producer[M, A] =
       p append p2
 
@@ -84,25 +75,34 @@ package object producer {
 
   implicit class ProducerEffSequenceOps[R :_Safe, A](p: Producer[Eff[R, ?], Eff[R, A]]) {
     def sequence[F[_]](n: Int)(implicit f: F |= R): Producer[Eff[R, ?], A] =
-      Producer.sequence[R, F, A](n)(p)
+      p |> transducers.sequence[R, F, A](n)
   }
 
   implicit class ProducerListOps[M[_] : MonadDefer, A](p: Producer[M, List[A]]) {
     def flattenList: Producer[M, A] =
-      Producer.flattenList(p)
+      p |> transducers.flattenList
   }
 
   implicit class ProducerSeqOps[M[_] : MonadDefer, A](p: Producer[M, Seq[A]]) {
     def flattenSeq: Producer[M, A] =
-      Producer.flattenSeq(p)
+      p |> transducers.flattenSeq
   }
 
   implicit class ProducerFlattenOps[M[_] : MonadDefer, A](p: Producer[M, Producer[M, A]]) {
     def flatten: Producer[M, A] =
-      Producer.flatten(p)
+      p |> transducers.flatten
   }
 
   implicit class ProducerTransducerOps[M[_] : MonadDefer, A](p: Producer[M, A]) {
+    def filter(f: A => Boolean): Producer[M, A] =
+      p |> transducers.filter(f)
+
+    def sliding(n: Int): Producer[M, List[A]] =
+      p |> transducers.sliding(n)
+
+    def chunk(n: Int): Producer[M, A] =
+      p |> transducers.chunk(n)
+
     def receiveOr[B](f: A => Producer[M, B])(or: =>Producer[M, B]): Producer[M, B] =
       p |> transducers.receiveOr(f)(or)
 
@@ -170,6 +170,7 @@ package object producer {
 
     def filter(predicate: B => Boolean): Transducer[M, A, B] = (producer: Producer[M, A]) =>
       t(producer).filter(predicate)
+
   }
 
   implicit class ProducerResourcesOps[R :_Safe, A](p: Producer[Eff[R, ?], A]) {

@@ -12,7 +12,7 @@ It is inspired by the `scalaz-stream` library at least for its API.
 
 You add `producer` as an sbt dependency:
 ```scala
-libraryDependencies += "org.atnos" %% "producer" % "1.0.0"
+libraryDependencies += "org.atnos" %% "producer" % "4.0.0"
 
 // to write types like Reader[String, ?]
 addCompilerPlugin("org.spire-math" %% "kind-projector" % "0.7.1")

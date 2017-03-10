@@ -241,6 +241,12 @@ trait Producers {
       case More(as, next) => as.traverse(tell[R, A]) >> collect(next)
     }
 
+  def flattenProducers[M[_] : MonadDefer, A](producers: List[Producer[M, A]]): Producer[M, A] =
+    producers match {
+      case Nil => done
+      case p :: rest => p append flattenProducers(rest)
+    }
+
   def into[R :_Safe, U, A](producer: Producer[Eff[R, ?], A])(implicit intoPoly: IntoPoly[R, U], s :_Safe[U]): Producer[Eff[U, ?], A] = {
     Producer(producer.run.into[U] flatMap {
       case Done() => done[Eff[U, ?], A].run
@@ -255,79 +261,12 @@ trait Producers {
   def pipe[M[_], A, B](p: Producer[M, A], t: Transducer[M, A, B]): Producer[M, B] =
     t(p)
 
-  def filter[M[_] : MonadDefer, A](producer: Producer[M, A])(f: A => Boolean): Producer[M, A] =
-    Producer(producer.run flatMap {
-      case Done() => done.run
-      case One(a) => MonadDefer[M].delay(a).as(if (f(a)) One(a) else Done())
-      case More(as, next) =>
-        as filter f match {
-          case Nil => next.filter(f).run
-          case a :: rest => (oneOrMore(a, rest) append next.filter(f)).run
-        }
-    })
-
-  def flatten[M[_] : MonadDefer, A](producer: Producer[M, Producer[M, A]]): Producer[M, A] =
-    Producer(producer.run flatMap {
-      case Done() => done.run
-      case One(p) => p.run
-      case More(ps, next) => (flattenProducers(ps) append flatten(next)).run
-    })
-
-  def flattenProducers[M[_] : MonadDefer, A](producers: List[Producer[M, A]]): Producer[M, A] =
-    producers match {
-      case Nil => done
-      case p :: rest => p append flattenProducers(rest)
-    }
-
-  def flattenSeq[M[_] : MonadDefer, A](producer: Producer[M, Seq[A]]): Producer[M, A] =
-    producer.flatMap(as => emitSeq(as.toList))
-
-  /** accumulate chunks of size n inside More nodes */
-  def chunk[M[_] : MonadDefer, A](size: Int)(producer: Producer[M, A]): Producer[M, A] =
-    if (size < 1) producer
-    else
-      Producer[M, A](
-        producer.run flatMap {
-          case Done() => MonadDefer[M].pure(Done())
-          case One(a) => MonadDefer[M].pure(One(a))
-          case More(as, next) =>
-            val (first, second) = as.splitAt(size)
-            if (first.isEmpty) chunk(size)(next).run
-            else if (second.isEmpty)
-              (emit(first) append chunk(size)(next)).run
-            else
-              (emit(first) append chunk(size)(emit(second) append next)).run
-        })
-
-  def sliding[M[_] : MonadDefer, A](size: Int)(producer: Producer[M, A]): Producer[M, List[A]] = {
-
-    def go(p: Producer[M, A], elements: Vector[A]): Producer[M, List[A]] =
-      Producer[M, List[A]](
-      peek(p).flatMap {
-        case (Some(a), as) =>
-          val es = elements :+ a
-          if (es.size == size) (one(es.toList) append go(as, Vector.empty)).run
-          else                 go(as, es).run
-
-        case (None, _) =>
-          one(elements.toList).run
-      })
-
-    go(producer, Vector.empty)
-  }
-
   def peek[M[_] : MonadDefer, A](producer: Producer[M, A]): M[(Option[A], Producer[M, A])] =
     producer.run map {
       case Done() => (None, done[M, A])
       case One(a) => (Option(a), done[M, A])
       case More(as, next) => (as.headOption, emit(as.tail) append next)
     }
-
-  def flattenList[M[_] : MonadDefer, A](producer: Producer[M, List[A]]): Producer[M, A] =
-    producer.flatMap(emit[M, A])
-
-  def sequence[R :_Safe, F[_], A](n: Int)(producer: Producer[Eff[R, ?], Eff[R, A]]) =
-    sliding(n)(producer).flatMap { actions => emitEval(Eff.sequenceA(actions)) }
 
   private[producer] def cata[M[_] : MonadDefer, A, B](producer: Producer[M, A])(onDone: Producer[M, B], onOne: A => Producer[M, B], onMore: (List[A], Producer[M, A]) => Producer[M, B]): Producer[M, B] =
     Producer[M, B](producer.run.flatMap {
