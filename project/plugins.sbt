@@ -9,3 +9,4 @@ addSbtPlugin("ohnosequences"        % "sbt-github-release"    % "0.4.0")
 
 resolvers += Resolver.url("ambiata-oss", new URL("https://ambiata-oss.s3.amazonaws.com"))(Resolver.ivyStylePatterns)
 resolvers += "Era7 maven releases" at "http://releases.era7.com.s3.amazonaws.com"
+resolvers += "repo.jenkins-ci.org" at "http://repo.jenkins-ci.org/public"
