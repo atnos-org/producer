@@ -126,6 +126,18 @@ trait Producers {
   def oneOrMore[M[_] : MonadDefer, A](a: A, as: List[A]): Producer[M, A] =
     Producer[M, A](MonadDefer[M].pure(More(a +: as, done)))
 
+  def doneFx[R :_Safe, A]: ProducerFx[R, A] =
+    done[Eff[R, ?], A]
+
+  def oneFx[R :_Safe, A](a: A): ProducerFx[R, A] =
+    one[Eff[R, ?], A](a)
+
+  def oneEff[R :_Safe, A](e: Eff[R, A]): ProducerFx[R, A] =
+    oneEval[Eff[R, ?], A](e)
+
+  def oneOrMoreFx[R :_Safe, A](a: A, as: List[A]): ProducerFx[R, A] =
+    oneOrMore[Eff[R, ?], A](a, as)
+
   def fromState[R :_Safe, A, S](state: State[S, A])(implicit m: State[S, ?] |= R): Producer[Eff[R, ?], A] = {
     Producer.eval {
       for {
