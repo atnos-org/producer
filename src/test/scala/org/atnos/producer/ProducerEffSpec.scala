@@ -48,6 +48,8 @@ class ProducerEffSpec(implicit ee: ExecutionEnv) extends Specification with Scal
 
   Producer.append is stacksafe $stacksafeAppend
 
+  It is possible to observe a large list of elements $observeEff
+
 """
 
   def monoid = prop { (p1: ProducerWriterInt, p2: ProducerWriterInt, p3: ProducerWriterInt) =>
@@ -212,6 +214,17 @@ class ProducerEffSpec(implicit ee: ExecutionEnv) extends Specification with Scal
     }
 
     (one[Eval, Int](1) append ones).take(10).runList.value ==== List.fill(10)(1)
+  }
+
+  def observeEff = {
+    type R = Fx.fx2[Safe, Eval]
+    type ER[A] = Eff[R, A]
+    val list: ListBuffer[Int] = new ListBuffer
+
+    val listSink: Sink[ER, Int] = org.atnos.origami.fold.fromSink((i: Int) => protect[R, Unit](list.append(i)))
+    range[ER](1, 99999).observe(listSink).runLast.execSafe.runEval.run
+
+    list.toList ==== (1 to 99999).toList
   }
 
   /**

@@ -187,6 +187,9 @@ trait Producers {
   def emitEff[R :_Safe, A](elements: List[A]): Producer[Eff[R, ?], A] =
     emit[Eff[R, ?], A](elements)
 
+  def range[M[_] : MonadDefer](min: Int, max: Int): Producer[M, Int] =
+    emit((min to max).toList)
+
   def emit[M[_] : MonadDefer, A](elements: List[A]): Producer[M, A] =
     elements match {
       case Nil      => done[M, A]
