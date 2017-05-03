@@ -132,6 +132,9 @@ trait Producers {
   def oneFx[R :_Safe, A](a: A): ProducerFx[R, A] =
     one[Eff[R, ?], A](a)
 
+  def emitFx[R :_Safe, A](elements: List[A]): ProducerFx[R, A] =
+    emit[Eff[R, ?], A](elements)
+
   def oneEff[R :_Safe, A](e: Eff[R, A]): ProducerFx[R, A] =
     oneEval[Eff[R, ?], A](e)
 
