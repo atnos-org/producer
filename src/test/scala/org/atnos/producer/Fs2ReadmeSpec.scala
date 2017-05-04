@@ -54,7 +54,7 @@ val converter: Task[Unit] =
   def resource(path: String) =
     getClass.getClassLoader.getResource(path).toURI.toURL.getFile
 
-  def writeLines[R :_Safe](path: String, encoding: String = "UTF-8"): Fold[Eff[R, ?], String, Unit] = new Fold[Eff[R, ?], String, Unit] {
+  def writeLines[R :_Safe](path: String, encoding: String = "UTF-8"): FoldFx[R, String, Unit] = new FoldFx[R, String, Unit] {
     type S = BufferedWriter
 
     implicit val monad = EffMonad[R]

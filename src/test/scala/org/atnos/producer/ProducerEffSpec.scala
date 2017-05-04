@@ -190,7 +190,7 @@ class ProducerEffSpec(implicit ee: ExecutionEnv) extends Specification with Scal
     type R = Fx.fx2[Safe, Eval]
     val messages = new ListBuffer[String]
 
-    val sizeFold: Fold[Eff[R, ?], Unit, Int] = new Fold[Eff[R, ?], Unit, Int] {
+    val sizeFold: FoldFx[R, Unit, Int] = new FoldFx[R, Unit, Int] {
       type S = Int
       implicit var monad = EffMonad[R]
 

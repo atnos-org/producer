@@ -5,13 +5,19 @@ import cats.implicits._
 import org.atnos.eff._
 import org.atnos.eff.all._
 import org.atnos.eff.syntax.safe._
-import org.atnos.origami.Fold
+import org.atnos.origami.{Fold, Sink}
 
 package object producer {
 
   type Transducer[M[_], A, B] = Producer[M, A] => Producer[M, B]
 
+  type TransducerFx[R, A, B] = Transducer[Eff[R, ?], A, B]
+
   type ProducerFx[R, A] = Producer[Eff[R, ?], A]
+
+  type FoldFx[R, A, B] = Fold[Eff[R, ?], A, B]
+
+  type SinkFx[R, A] = Sink[Eff[R, ?], A]
 
   object producers extends Producers
 
