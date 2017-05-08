@@ -162,6 +162,14 @@ trait Producers {
       }
     })
 
+  def unfoldM[M[_] : MonadDefer, A, B](a: A)(f: A => M[Option[(A, B)]]): Producer[M, B] =
+    Producer[M, B](
+      f(a) map {
+        case Some((a1, b)) => More[M, B](List(b), unfoldM(a1)(f))
+        case None          => Done[M, B]()
+      }
+    )
+
   def unfoldList[M[_] : MonadDefer, A, B](a: A)(f: A => Option[(A, NonEmptyList[B])]): Producer[M, B] =
     Producer[M, B](MonadDefer[M].delay {
       f(a) match {
@@ -169,6 +177,13 @@ trait Producers {
         case None           => Done[M, B]()
       }
     })
+
+  def unfoldListM[M[_] : MonadDefer, A, B](a: A)(f: A => M[Option[(A, NonEmptyList[B])]]): Producer[M, B] =
+    Producer[M, B](
+      f(a) map {
+        case Some((a1, bs)) => More[M, B](bs.toList, unfoldListM(a1)(f))
+        case None           => Done[M, B]()
+      })
 
   def repeat[M[_] : MonadDefer, A](p: Producer[M, A]): Producer[M, A] =
     Producer(p.run flatMap {

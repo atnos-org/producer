@@ -4,6 +4,7 @@ import org.scalacheck._
 import org.specs2._
 import org.specs2.matcher._
 import cats._
+import cats.data.NonEmptyList
 import cats.implicits._
 import org.atnos.producer._
 import org.atnos.producer.producers._
@@ -32,6 +33,12 @@ class ProducerSpec extends Specification with ScalaCheck with ThrownExpectations
 
   a producer can be followed by another one $followed
   Producer.append is stacksafe              $stacksafeAppend
+
+  unfold operations can be used to create a Producer
+    producing one element at the time                  $unfold1
+    producing one element monadically at the time      $unfold2
+    producing several elements at the time             $unfold3
+    producing several elements monadically at the time $unfold4
 
 """
 
@@ -124,6 +131,54 @@ class ProducerSpec extends Specification with ScalaCheck with ThrownExpectations
     }
 
     (one[Eval, Int](1) append ones).take(10).runList.value ==== List.fill(10)(1)
+  }
+
+  def unfold1 = prop { xs: List[Int] =>
+    var n = 0
+    val p =
+      Producer.unfold[Eval, Int, Int](n) { i =>
+        if (n < xs.size) { val r = Some((i, xs(n) + 1)); n += 1; r }
+        else             None
+      }
+
+    p.runList.value === xs.map(_ + 1)
+  }
+
+  def unfold2 = prop { xs: List[Int] =>
+    var n = 0
+    val p =
+      Producer.unfoldM[Eval, Int, Int](n) { i =>
+        Eval.later {
+          if (n < xs.size) { val r = Some((i, xs(n) + 1)); n += 1; r }
+          else             None
+        }
+      }
+
+    p.runList.value === xs.map(_ + 1)
+  }
+
+  def unfold3 = prop { xs: List[Int] =>
+    var n = 0
+    val p =
+      Producer.unfoldList[Eval, Int, Int](n) { i =>
+        if (n < xs.size) { val r = Some((i, NonEmptyList.of(xs(n) + 1))); n += 1; r }
+        else             None
+      }
+
+    p.runList.value === xs.map(_ + 1)
+  }
+
+  def unfold4 = prop { xs: List[Int] =>
+    var n = 0
+    val p =
+      Producer.unfoldListM[Eval, Int, Int](n) { i =>
+        Eval.later {
+          if (n < xs.size) { val r = Some((i, NonEmptyList.of(xs(n) + 1))); n += 1; r }
+          else             None
+        }
+      }
+
+    p.runList.value === xs.map(_ + 1)
   }
 
   /**
