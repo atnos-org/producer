@@ -195,6 +195,9 @@ trait Producers {
   def repeatValue[M[_] : MonadDefer, A](a: A): Producer[M, A] =
     Producer(MonadDefer[M].delay(More(List(a), repeatValue(a))))
 
+  def fillValue[M[_] : MonadDefer, A](n: Int)(a: A): Producer[M, A] =
+    repeatValue(a).take(n)
+
   def repeatEval[M[_] : MonadDefer, A](e: M[A]): Producer[M, A] =
     Producer(e.map(a => More(List(a), repeatEval(e))))
 

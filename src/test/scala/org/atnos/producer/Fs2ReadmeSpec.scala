@@ -35,7 +35,7 @@ val converter: Task[Unit] =
 """
 
   def readme = {
-    def program[R: _Safe] =
+    def program[R :_Safe] =
       readLines[R](resource("fahrenheit.txt"))
         .filter(s => !s.trim.isEmpty && !s.startsWith("//"))
         .map(_.split(" ")(0))
