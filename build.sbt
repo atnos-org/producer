@@ -101,7 +101,7 @@ lazy val sharedReleaseProcess = Seq(
 ) ++
   Seq(
     releaseNextVersion := { v => Version(v).map(_.bumpBugfix.string).getOrElse(versionFormatError) },
-    releaseTagName <<= (releaseVersion, version) map  { (rv, v) => "PRODUCER-" + rv(v) }
+    releaseTagName := "PRODUCER-" + releaseVersion.value(version.value)
   ) ++
   testTaskDefinition(generateWebsiteTask, Seq(Tests.Filter(_.endsWith("Website"))))
 
@@ -115,7 +115,7 @@ lazy val generateWebsite     = executeStepTask(generateWebsiteTask, "Generating 
 
 lazy val warnUnusedImport = Seq(
   scalacOptions in (Compile, console) ~= {_.filterNot("-Ywarn-unused-import" == _)},
-  scalacOptions in (Test, console) <<= (scalacOptions in (Compile, console))
+  scalacOptions in (Test, console) := (scalacOptions in (Compile, console)).value
 )
 
 lazy val credentialSettings = Seq(
@@ -158,9 +158,18 @@ def testTaskDefinition(task: TaskKey[Tests.Output], options: Seq[TestOption]) =
     (testOptions in (Test, task) ++= options)
 
 def testTask(task: TaskKey[Tests.Output]) =
-  task <<= (streams in Test, loadedTestFrameworks in Test, testLoader in Test,
-    testGrouping in Test in test, testExecution in Test in task,
-    fullClasspath in Test in test, javaHome in test) flatMap Defaults.allTestGroupsTask
+  task := Def.taskDyn {
+    Def.task(
+      Defaults.allTestGroupsTask(
+        (streams in Test).value,
+        (loadedTestFrameworks in Test).value,
+        (testLoader in Test).value,
+        (testGrouping in Test in test).value,
+        (testExecution in Test in task).value,
+        (fullClasspath in Test in test).value,
+        (javaHome in test).value
+      )).flatMap(identity)
+  }.value
 
 lazy val si2712 =
   scalacOptions ++=

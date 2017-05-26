@@ -23,6 +23,7 @@ class TransducerSpec extends Specification with ScalaCheck { def is = s2"""
   zipWithNext            $zipWithNextElement
   zipWithPreviousAndNext $zipWithPreviousAndNextElement
   zipWithIndex           $zipWithIndex1
+  zipWithIndex           $zipWithIndex2
   intersperse            $intersperse1
 
   first                  $firstElement
@@ -97,6 +98,10 @@ class TransducerSpec extends Specification with ScalaCheck { def is = s2"""
 
   def zipWithIndex1 = prop { xs: List[Int] =>
     emit[ES, Int](xs).zipWithIndex.safeToList ==== xs.zipWithIndex
+  }
+
+  def zipWithIndex2 = prop { xs: List[Int] =>
+    emitSeq[ES, Int](xs).zipWithIndex.safeToList ==== xs.zipWithIndex
   }
 
   def intersperse1 = prop { (xs: List[String], c: String) =>
