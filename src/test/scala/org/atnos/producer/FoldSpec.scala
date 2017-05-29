@@ -4,12 +4,9 @@ import org.specs2.Specification
 import producers._
 import org.atnos.origami._
 import org.atnos.origami.fold._
-import org.atnos.origami.folds._
 import org.atnos.eff.all._
 import org.atnos.eff._
 import org.atnos.eff.syntax.all._
-import cats.implicits._
-import cats._
 
 import scala.collection.mutable.ListBuffer
 

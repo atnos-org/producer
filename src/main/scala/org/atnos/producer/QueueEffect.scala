@@ -6,7 +6,6 @@ import org.atnos.eff._
 import all._
 import future._
 import SubscribeEffect._
-import cats.implicits._
 
 import scala.collection.mutable.ListBuffer
 import scala.concurrent.Promise

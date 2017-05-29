@@ -6,10 +6,7 @@ import org.specs2.Specification
 import io._
 import org.atnos.eff._
 import all._
-import cats.Eval
 import org.atnos.eff.syntax.all._
-import producers._
-import org.atnos.origami._
 
 class Fs2ReadmeSpec extends Specification { def is = s2"""
 

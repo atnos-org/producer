@@ -7,8 +7,6 @@ import org.atnos.eff.{Eff, ExecutorServices}
 import org.atnos.eff.all._
 import org.atnos.eff.future._
 
-import scala.concurrent.ExecutionContext
-
 package object io {
 
   def readBytes[R :_Safe](path: String, size: Int = 4096, chunkSize: Int = 100): Producer[Eff[R, ?], Array[Byte]] =

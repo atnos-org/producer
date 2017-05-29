@@ -2,7 +2,6 @@ package org.atnos.producer
 import Producer._
 import org.scalacheck._
 import org.specs2._
-import cats._
 import cats.data._
 import cats.implicits._
 import transducers._

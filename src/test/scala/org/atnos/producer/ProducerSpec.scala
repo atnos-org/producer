@@ -6,11 +6,7 @@ import org.specs2.matcher._
 import cats._
 import cats.data.NonEmptyList
 import cats.implicits._
-import org.atnos.producer._
 import org.atnos.producer.producers._
-import transducers._
-import org.atnos.origami._
-import org.atnos.origami.folds._
 
 import scala.collection.mutable.ListBuffer
 

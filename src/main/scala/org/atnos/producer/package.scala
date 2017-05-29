@@ -4,8 +4,8 @@ import cats._
 import cats.implicits._
 import org.atnos.eff._
 import org.atnos.eff.all._
-import org.atnos.eff.syntax.safe._
 import org.atnos.origami.{Fold, Sink}
+import org.atnos.origami.fold._
 
 package object producer {
 
@@ -80,7 +80,7 @@ package object producer {
   }
 
   implicit class ProducerEffSequenceOps[R :_Safe, A](p: Producer[Eff[R, ?], Eff[R, A]]) {
-    def sequence[F[_]](n: Int)(implicit f: F |= R): Producer[Eff[R, ?], A] =
+    def sequence[F[_]](n: Int): Producer[Eff[R, ?], A] =
       p |> transducers.sequence[R, F, A](n)
   }
 

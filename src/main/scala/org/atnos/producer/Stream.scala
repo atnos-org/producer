@@ -1,7 +1,6 @@
 package org.atnos.producer
 
 import cats._
-import org.atnos.eff.all._
 import Producer._
 
 sealed trait Stream[M[_], A]

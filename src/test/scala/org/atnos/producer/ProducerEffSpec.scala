@@ -16,6 +16,7 @@ import org.specs2.concurrent.ExecutionEnv
 import org.specs2.matcher._
 
 import scala.collection.mutable.ListBuffer
+import org.atnos.origami.fold._
 
 class ProducerEffSpec(implicit ee: ExecutionEnv) extends Specification with ScalaCheck with ThrownExpectations { def is = s2"""
 
@@ -192,7 +193,7 @@ class ProducerEffSpec(implicit ee: ExecutionEnv) extends Specification with Scal
 
     val sizeFold: FoldFx[R, Unit, Int] = new FoldFx[R, Unit, Int] {
       type S = Int
-      implicit var monad = EffMonad[R]
+      implicit val monad = EffMonad[R]
 
       def start = pure(0)
 

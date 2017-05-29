@@ -3,8 +3,6 @@ package org.atnos.producer
 import org.specs2.Specification
 import producers._
 import cats._
-import cats.implicits._
-import org.atnos.producer._
 
 class ProducerEvalSpec extends Specification { def is = s2"""
 

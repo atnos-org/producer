@@ -13,17 +13,15 @@ lazy val producer = project.in(file("."))
 
 lazy val buildSettings = Seq(
   organization := "org.atnos",
-  scalaVersion := "2.12.1",
-  crossScalaVersions := Seq("2.11.8", "2.12.1")
+  scalaVersion := "2.12.2",
+  crossScalaVersions := Seq("2.11.11", "2.12.2")
 )
 
 def commonSettings = Seq(
   scalacOptions ++= commonScalacOptions,
   scalacOptions in (Compile, doc) := (scalacOptions in (Compile, doc)).value.filter(_ != "-Xfatal-warnings"),
   addCompilerPlugin("org.scalamacros" % "paradise" % "2.1.0" cross CrossVersion.full),
-  addCompilerPlugin("org.spire-math" %% "kind-projector" % "0.9.3"),
-  si2712,
-  libraryDependencies ++= si2712Dependency(scalaVersion.value)
+  addCompilerPlugin("org.spire-math" %% "kind-projector" % "0.9.3")
 ) ++ warnUnusedImport ++ prompt
 
 lazy val tagName = Def.setting{
@@ -59,6 +57,7 @@ lazy val commonScalacOptions = Seq(
   "-Yno-adapted-args",
   "-Ywarn-numeric-widen",
   "-Ywarn-value-discard",
+  "-Ypartial-unification",
   "-Xfuture"
 )
 
