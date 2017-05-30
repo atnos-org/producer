@@ -26,6 +26,7 @@ class ProducerSpec extends Specification with ScalaCheck with ThrownExpectations
   flattenSeq                 $flattenSeq1
   flattenProducer            $flattenProducer1
   map                        $map1
+  zip                        $zip1
 
   a producer can be followed by another one $followed
   Producer.append is stacksafe              $stacksafeAppend
@@ -116,6 +117,10 @@ class ProducerSpec extends Specification with ScalaCheck with ThrownExpectations
     emit(xs).map(f).runList.value ==== xs.map(f)
   }.setGen(Gen.listOf(Gen.choose(1, 100)))
 
+  def zip1 = prop { (xs: ProducerInt, ys: ProducerInt) =>
+    (xs zip ys).runList.value ==== (xs.runList.value zip ys.runList.value)
+  }
+
   def followed = prop { (xs1: List[Int], xs2: List[Int]) =>
     (emit(xs1) > emit(xs2)).runList.value ==== xs1 ++ xs2
   }
@@ -187,11 +192,23 @@ class ProducerSpec extends Specification with ScalaCheck with ThrownExpectations
   def runLike[A](expected: Producer[Eval, A]): Matcher[Producer[Eval, A]] =
     (actual: Producer[Eval, A]) => actual.runList.value ==== expected.runList.value
 
-  implicit def ArbitraryProducerInt: Arbitrary[ProducerInt] = Arbitrary {
-    for {
-      n <- Gen.choose(0, 10)
-      xs <- Gen.listOfN(n, Gen.choose(1, 30))
-    } yield emit(xs)
+  implicit def ArbitraryProducerInt: Arbitrary[ProducerInt] =
+    Arbitrary(Gen.sized(genProducerInt))
+
+  def genProducerInt(n: Int): Gen[ProducerInt] = {
+    if (n <= 0)
+      Gen.const(Producer.done[Eval, Int])
+    else if (n == 1)
+       Gen.oneOf(Gen.choose(1, 10).map(i => one(i)),
+                 Gen.choose(1, 10).map(i => emit(List(i))))
+    else {
+      for {
+        i    <- Gen.choose(1, n)
+        as   <- Gen.listOfN(n, Gen.choose(1, 10))
+        g    <- Gen.oneOf(emit(as), emitSeq(as))
+        next <- genProducerInt(n - i)
+      } yield g append next
+    }
   }
 
   implicit def ArbitraryKleisliString: Arbitrary[Int => ProducerString] = Arbitrary {

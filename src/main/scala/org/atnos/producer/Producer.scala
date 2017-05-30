@@ -63,19 +63,27 @@ case class Producer[M[_] : MonadDefer, A](run: M[Stream[M, A]]) {
           case One(b) => one((a, b)).run
 
           case More(bs, next) =>
-            bs.headOption.map(b => one[M, (A, B)]((a, b))).getOrElse(done).run
+            bs.headOption match {
+              case Some(b) => one[M, (A, B)]((a, b)).run
+              case None    => (this zip next).run
+            }
         }
 
-      case More(Nil, next) => done.run
+      case More(Nil, next) =>
+        (next zip other).run
 
       case More(as, nexta) =>
         other.run flatMap {
           case Done() => done.run
-          case One(b) => as.headOption.map(a => one[M, (A, B)]((a, b))).getOrElse(done).run
+          case One(b) =>
+            as.headOption match {
+              case Some(a) => one[M, (A, B)]((a, b)).run
+              case None    => (nexta zip other).run
+            }
 
           case More(bs, nextb) =>
             if (as.size == bs.size)
-              emit(as zip bs).run
+              (emit(as zip bs) append (nexta zip nextb)).run
             else if (as.size < bs.size)
               (emit(as zip bs) append (nexta zip (emit(bs.drop(as.size)) append nextb))).run
             else
