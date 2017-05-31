@@ -136,6 +136,15 @@ package object producer {
     def zipWithPreviousAndNext: Producer[M, (Option[A], A, Option[A])] =
       p |> transducers.zipWithPreviousAndNext
 
+    def zipWithPreviousN(n: Int): Producer[M, (List[A], A)] =
+      p |> transducers.zipWithPreviousN(n)
+
+    def zipWithNextN(n: Int): Producer[M, (A, List[A])] =
+      p |> transducers.zipWithNextN(n)
+
+    def zipWithPreviousAndNextN(n: Int): Producer[M, (List[A], A, List[A])] =
+      p |> transducers.zipWithPreviousAndNextN(n)
+
     def zipWithIndex: Producer[M, (A, Int)] =
       p |> transducers.zipWithIndex
 
@@ -176,6 +185,9 @@ package object producer {
 
     def filter(predicate: B => Boolean): Transducer[M, A, B] = (producer: Producer[M, A]) =>
       t(producer).filter(predicate)
+
+    def map[C](f: B => C): Transducer[M, A, C] = (producer: Producer[M, A]) =>
+      t(producer).map(f)
 
   }
 

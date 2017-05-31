@@ -37,6 +37,9 @@ class ProducerSpec extends Specification with ScalaCheck with ThrownExpectations
     producing several elements at the time             $unfold3
     producing several elements monadically at the time $unfold4
 
+  we can peek to get the next available element of a producer  $peek1
+  we can peek to get the next available elements of a producer $peekN
+
 """
 
   def monoid = prop { (p1: ProducerInt, p2: ProducerInt, p3: ProducerInt) =>
@@ -181,6 +184,21 @@ class ProducerSpec extends Specification with ScalaCheck with ThrownExpectations
 
     p.runList.value === xs.map(_ + 1)
   }
+
+  def peek1 = prop { p: ProducerInt =>
+    val (peeked, next) = Producer.peek(p).value
+
+    peeked ==== p.runList.value.headOption
+    next.runList.value ==== p.drop(1).runList.value
+  }
+
+  def peekN = prop { (p: ProducerInt, n: Int) =>
+    val (peeked, next) = Producer.peekN(p, n).value
+
+    peeked ==== p.runList.value.take(n)
+    next.runList.value must be_==(p.drop(n).runList.value).when(n >= 1)
+  }
+
 
   /**
    * HELPERS

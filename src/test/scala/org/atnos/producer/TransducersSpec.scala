@@ -1,15 +1,18 @@
 package org.atnos.producer
+
 import Producer._
 import org.scalacheck._
 import org.specs2._
+import org.specs2.execute._
 import cats.data._
 import cats.implicits._
 import transducers._
 import org.atnos.eff._
 import org.atnos.eff.all._
 import org.atnos.eff.syntax.all._
+import org.specs2.matcher.ThrownExpectations
 
-class TransducerSpec extends Specification with ScalaCheck { def is = s2"""
+class TransducersSpec extends Specification with ScalaCheck with ThrownExpectations { def is = s2"""
 
   a producer can be modified by a transducer $transduced
   a producer can be modified by a receiver   $received
@@ -19,7 +22,9 @@ class TransducerSpec extends Specification with ScalaCheck { def is = s2"""
   take(n) + exception $takeException
 
   zipWithPrevious        $zipWithPreviousElement
+  zipWithPreviousN       $zipWithPreviousNElements
   zipWithNext            $zipWithNextElement
+  zipWithNextN           $zipWithNextNElements
   zipWithPreviousAndNext $zipWithPreviousAndNextElement
   zipWithIndex           $zipWithIndex1
   zipWithIndex           $zipWithIndex2
@@ -85,8 +90,32 @@ class TransducerSpec extends Specification with ScalaCheck { def is = s2"""
     (emit[ES, Int](xs).zipWithNext).safeToList ==== (xs zip (xs.drop(1).map(Option(_)) :+ None))
   }
 
+  def zipWithNextNElements = prop { (xs: List[Int], n: Int) =>
+    AsResult(prop { n: Int =>
+      emit[ES, Int](List()).zipWithNextN(n).safeToList ==== List()
+      emit[ES, Int](List(1)).zipWithNextN(n).safeToList ==== List((1, List()))
+    }.setGen(Gen.choose(0, 10)))
+
+    emit[ES, Int](List(1, 2)).zipWithNextN(0).safeToList ==== List((1, List()), (2, List()))
+    emit[ES, Int](List(1, 2)).zipWithNextN(1).safeToList ==== List((1, List(2)), (2, List()))
+    emit[ES, Int](List(1, 2, 3)).zipWithNextN(1).safeToList ==== List((1, List(2)), (2, List(3)), (3, List()))
+    emit[ES, Int](List(1, 2, 3, 4)).zipWithNextN(2).safeToList ==== List((1, List(2, 3)), (2, List(3, 4)), (3, List(4)), (4, List()))
+  }.setGen2(Gen.choose(0, 10))
+
   def zipWithPreviousElement = prop { xs: List[Int] =>
-    (emit[ES, Int](xs).zipWithPrevious).safeToList ==== ((None +: xs.dropRight(1).map(Option(_))) zip xs)
+    emit[ES, Int](xs).zipWithPrevious.safeToList ==== ((None +: xs.dropRight(1).map(Option(_))) zip xs)
+  }
+
+  def zipWithPreviousNElements = {
+    AsResult(prop { n: Int =>
+      emit[ES, Int](List()).zipWithPreviousN(n).safeToList ==== List()
+      emit[ES, Int](List(1)).zipWithPreviousN(n).safeToList ==== List((List(), 1))
+    })
+
+    emit[ES, Int](List(1, 2)).zipWithPreviousN(0).safeToList ==== List((List(), 1), (List(), 2))
+    emit[ES, Int](List(1, 2)).zipWithPreviousN(1).safeToList ==== List((List(), 1), (List(1), 2))
+    emit[ES, Int](List(1, 2, 3)).zipWithPreviousN(1).safeToList ==== List((List(), 1), (List(1), 2), (List(2), 3))
+    emit[ES, Int](List(1, 2, 3, 4)).zipWithPreviousN(2).safeToList ==== List((List(), 1), (List(1), 2), (List(1, 2), 3), (List(2, 3), 4))
   }
 
   def zipWithPreviousAndNextElement = prop { xs: List[Int] =>

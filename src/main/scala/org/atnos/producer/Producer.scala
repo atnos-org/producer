@@ -312,6 +312,25 @@ trait Producers {
       case More(as, next) => (as.headOption, emit(as.tail) append next)
     }
 
+  def peekN[M[_] : MonadDefer, A](producer: Producer[M, A], n: Int): M[(List[A], Producer[M, A])] = {
+    val monad = Monad[M]
+
+    def go(p: Producer[M, A], collected: Vector[A]): M[(List[A], Producer[M, A])] =
+      p.run flatMap {
+        case Done() => monad.pure((collected.toList, done[M, A]))
+        case One(a) => monad.pure(((collected :+ a).take(n).toList, done[M, A]))
+        case More(as, next) =>
+          val all = collected ++ as
+          if (all.size >= n)
+            monad.pure((all.take(n).toList, emit(all.drop(n).toList) append next))
+          else
+            go(next, all)
+      }
+
+    go(producer, Vector.empty)
+
+  }
+
   private[producer] def cata[M[_] : MonadDefer, A, B](producer: Producer[M, A])(onDone: Producer[M, B], onOne: A => Producer[M, B], onMore: (List[A], Producer[M, A]) => Producer[M, B]): Producer[M, B] =
     Producer[M, B](producer.run.flatMap {
       case Done() => onDone.run

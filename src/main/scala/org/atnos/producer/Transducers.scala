@@ -310,26 +310,32 @@ trait Transducers {
     reduceMonoid[M, B].apply(transducer(f).apply(producer))
 
   def zipWithPrevious[M[_] : MonadDefer, A]: Transducer[M, A, (Option[A], A)] =
+    zipWithPreviousN(n = 1).map { case (ps, a) => (ps.headOption, a) }
+
+  def zipWithPreviousN[M[_] : MonadDefer, A](n: Int): Transducer[M, A, (List[A], A)] =
     (producer: Producer[M, A]) => {
-      def go(p: Producer[M, A], previous: Option[A]): Producer[M, (Option[A], A)] =
+      def go(p: Producer[M, A], previous: Vector[A]): Producer[M, (List[A], A)] =
         Producer(peek(p) flatMap {
-          case (Some(a), as) => (one((previous, a)) append go(as, Option(a))).run
-          case (None, _)     => done.run
+          case (Some(a), as) =>
+            val ps = if (previous.size < n) previous else previous.drop(1)
+            (one((previous.take(n).toList, a)) append go(as, ps :+ a)).run
+          case (None, _) =>
+            done.run
         })
 
-      go(producer, None)
+      go(producer, Vector.empty)
     }
 
   def zipWithNext[M[_] : MonadDefer, A]: Transducer[M, A, (A, Option[A])] =
+    zipWithNextN(n = 1).map { case (a, ns) => (a, ns.headOption) }
+
+  def zipWithNextN[M[_] : MonadDefer, A](n: Int): Transducer[M, A, (A, List[A])] =
     (producer: Producer[M, A]) => {
-      def go(p: Producer[M, A], previous: A): Producer[M, (A, Option[A])] =
-        Producer(peek(p) flatMap {
-          case (Some(a), as) => (one((previous, Option(a))) append go(as, a)).run
-          case (None, _)     => one[M, (A, Option[A])]((previous, None)).run
-        })
-      Producer(peek(producer) flatMap {
-        case (Some(a), as) => go(as, a).run
-        case (None, _) => done.run
+      Producer(peekN(producer, n + 1) flatMap { case (next, as) =>
+        if (next.isEmpty)
+          done.run
+        else
+          (one((next.head, next.drop(1))) append producer.drop(1).zipWithNextN(n)).run
       })
     }
 
@@ -337,6 +343,9 @@ trait Transducers {
     (p: Producer[M, A]) =>
       ((p |> zipWithPrevious) zip (p |> zipWithNext)).map { case ((prev, a), (_, next)) => (prev, a, next) }
 
+  def zipWithPreviousAndNextN[M[_] : MonadDefer, A](n: Int): Transducer[M, A, (List[A], A, List[A])] =
+    (p: Producer[M, A]) =>
+      ((p |> zipWithPreviousN(n)) zip (p |> zipWithNextN(n))).map { case ((prev, a), (_, next)) => (prev, a, next) }
 
   def zipWithIndex[M[_] : MonadDefer, A]: Transducer[M, A, (A, Int)] =
     zipWithState[M, A, Int](0)((_, n: Int) => n + 1)
