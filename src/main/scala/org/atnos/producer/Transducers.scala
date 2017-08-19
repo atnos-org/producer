@@ -310,7 +310,9 @@ trait Transducers {
     reduceMonoid[M, B].apply(transducer(f).apply(producer))
 
   def zipWithPrevious[M[_] : MonadDefer, A]: Transducer[M, A, (Option[A], A)] =
-    zipWithPreviousN(n = 1).map { case (ps, a) => (ps.headOption, a) }
+    (producer: Producer[M, A]) =>
+      one(None: Option[A]).append(producer.map(Option.apply)).zip(producer)
+
 
   def zipWithPreviousN[M[_] : MonadDefer, A](n: Int): Transducer[M, A, (List[A], A)] =
     (producer: Producer[M, A]) => {
