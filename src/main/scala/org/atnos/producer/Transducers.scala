@@ -327,15 +327,18 @@ trait Transducers {
     }
 
   def zipWithNext[M[_] : MonadDefer, A]: Transducer[M, A, (A, Option[A])] =
-    zipWithNextN(n = 1).map { case (a, ns) => (a, ns.headOption) }
+    (producer: Producer[M, A]) =>
+      producer.zip(producer.drop(1).map(Option.apply).append(one(None: Option[A])))
 
   def zipWithNextN[M[_] : MonadDefer, A](n: Int): Transducer[M, A, (A, List[A])] =
     (producer: Producer[M, A]) => {
       Producer(peekN(producer, n + 1) flatMap { case (next, as) =>
         if (next.isEmpty)
           done.run
-        else
-          (one((next.head, next.drop(1))) append producer.drop(1).zipWithNextN(n)).run
+        else {
+          val rest = next.drop(1)
+          (one((next.head, rest)) append (emit(rest) append as).zipWithNextN(n)).run
+        }
       })
     }
 
