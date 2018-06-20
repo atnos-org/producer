@@ -21,13 +21,23 @@ def commonSettings = Seq(
   addCompilerPlugin("org.spire-math" %% "kind-projector" % "0.9.6")
 ) ++ warnUnusedImport ++ prompt
 
-lazy val publishSettings = Seq(
-  publishMavenStyle := true,
-  publishArtifact in Test := false,
-  pomIncludeRepository := Function.const(false),
-  publishTo := Option("Releases" at "https://oss.sonatype.org/service/local/staging/deploy/maven2"),
-  sonatypeProfileName := "org.atnos"
-) ++ credentialSettings ++ userGuideSettings
+lazy val publishSettings =
+  Seq(
+  homepage := Some(url("https://github.com/atnos-org/producer")),
+  licenses := Seq("MIT" -> url("http://opensource.org/licenses/MIT")),
+  scmInfo := Some(ScmInfo(url("https://github.com/atnos-org/producer"), "scm:git:git@github.com:atnos-org/producer.git")),
+  autoAPIMappings := true,
+  apiURL := Some(url("http://atnos.org/producer/api/")),
+  pomExtra := (
+    <developers>
+      <developer>
+        <id>etorreborre</id>
+        <name>Eric Torreborre</name>
+        <url>https://github.com/etorreborre/</url>
+      </developer>
+    </developers>
+    )
+) ++ credentialSettings ++ sharedPublishSettings
 
 lazy val commonScalacOptions = Seq(
   "-deprecation",
@@ -40,9 +50,17 @@ lazy val commonScalacOptions = Seq(
   "-Yno-adapted-args",
   "-Ywarn-numeric-widen",
   "-Ywarn-value-discard",
-  "-Ypartial-unification",
-  "-Xfuture"
+  "-Xfuture",
+  "-Ypartial-unification"
 )
+
+lazy val sharedPublishSettings = Seq(
+  publishMavenStyle := true,
+  publishArtifact in Test := false,
+  pomIncludeRepository := Function.const(false),
+  publishTo := Option("Releases" at "https://oss.sonatype.org/service/local/staging/deploy/maven2"),
+  sonatypeProfileName := "org.atnos"
+) ++ userGuideSettings
 
 lazy val userGuideSettings =
   Seq(
