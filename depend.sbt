@@ -1,11 +1,15 @@
-lazy val effVersion     = "4.4.1"
-lazy val specs2Version  = "3.8.9"
-lazy val origamiVersion = "4.0.5"
+lazy val effVersion        = "5.3.0"
+lazy val specs2Version     = "4.3.0"
+lazy val origamiVersion    = "5.0.1"
+lazy val simulacrumVersion = "0.12.0"
+lazy val catsVersion       = "1.1.0"
 
 libraryDependencies in Global :=
-  eff    ++
-  specs2 ++
-  origami
+  eff        ++
+  specs2     ++
+  origami    ++
+  simulacrum ++
+  catsFree
 
 resolvers ++= Seq(
     Resolver.sonatypeRepo("releases")
@@ -26,4 +30,8 @@ lazy val specs2 = Seq(
   , "org.specs2" %% "specs2-html"
   , "org.specs2" %% "specs2-junit").map(_ % specs2Version % "test")
 
+lazy val simulacrum = Seq(
+  "com.github.mpilquist" %% "simulacrum" % simulacrumVersion)
 
+lazy val catsFree = Seq(
+  "org.typelevel" %% "cats-free" % catsVersion)

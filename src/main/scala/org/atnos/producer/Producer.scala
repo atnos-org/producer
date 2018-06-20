@@ -3,7 +3,6 @@ package org.atnos.producer
 import cats._
 import data._
 import cats.implicits._
-import cats.free.Free.foldLeftM
 import org.atnos.eff._
 import org.atnos.eff.safe._
 import org.atnos.eff.writer._
@@ -250,7 +249,7 @@ trait Producers {
     producer.run flatMap {
       case Done() => start.flatMap(end)
       case One(a) => start.flatMap(s1 => f(s1, a).flatMap(end))
-      case More(as, next) => start.flatMap(s1 => foldLeftM(as, s1)(f).flatMap(s => fold(next)(MonadDefer[M].pure(s), f, end)))
+      case More(as, next) => start.flatMap(s1 => as.foldM(s1)(f).flatMap(s => fold(next)(MonadDefer[M].pure(s), f, end)))
     }
   }
 
@@ -261,7 +260,7 @@ trait Producers {
           case Done() => s.flatMap(end) >> done[M, A].run
           case One(a) => s.flatMap(end) >> one[M, A](a).run
           case More(as, next) =>
-            val newS = s.flatMap(s1 => foldLeftM(as, s1)(f))
+            val newS = s.flatMap(s1 => as.foldM(s1)(f))
             (emit(as) append go(next, newS)).run
         }
       }
